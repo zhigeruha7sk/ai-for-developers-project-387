@@ -1,0 +1,19 @@
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { RouterProvider } from 'react-router-dom';
+// Настройка SDK должна примениться до первого запроса: запросы идут
+// на тот же origin и проксируются Vite на бэкенд.
+import './api/client';
+import { router } from './router';
+import './index.css';
+
+const container = document.getElementById('root');
+if (!container) {
+  throw new Error('Не найден корневой элемент #root');
+}
+
+createRoot(container).render(
+  <StrictMode>
+    <RouterProvider router={router} />
+  </StrictMode>,
+);
