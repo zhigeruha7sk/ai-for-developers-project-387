@@ -35,5 +35,5 @@ jobs:
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         with:
-          model: opencode/deepseek-v4.1-flash
+          model: opencode-go/deepseek-v4.1-flash
           share: 'false'
