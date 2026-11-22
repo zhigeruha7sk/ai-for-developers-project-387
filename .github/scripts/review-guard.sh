@@ -32,9 +32,11 @@ if [[ ! "$max" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-# Issue comments and pull request review comments are separate endpoints. The
-# review job also listens to pull_request_review_comment, so counting only
-# issue comments would let an inline trigger bypass the limit.
+# Issue comments and pull request review comments are separate endpoints.
+# opencode.yml no longer listens to pull_request_review_comment, so this is
+# defense-in-depth: if an inline marker comment exists from an older run it
+# still counts, and counting both endpoints keeps the limit correct if the
+# inline trigger is ever re-enabled.
 #
 # Count only maintainers' triggers: otherwise any outsider could exhaust the
 # limit with marker comments and silently disable automatic review.
