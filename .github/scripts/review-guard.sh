@@ -32,9 +32,16 @@ if [[ ! "$max" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
+# Count only maintainers' triggers: otherwise any outsider could exhaust the
+# limit with marker comments and silently disable automatic review.
 count="$(gh api --paginate --slurp "repos/$GH_REPO/issues/$pr/comments" \
   | jq --arg marker '<!-- opencode-auto-review -->' --argjson excluded "$exclude" \
-    '[.[][] | select((.body // "") | contains($marker)) | select(.id != $excluded)] | length')"
+    '[.[][]
+      | select((.body // "") | contains($marker))
+      | select(.id != $excluded)
+      | select((.author_association // "") as $a
+          | ["OWNER", "MEMBER", "COLLABORATOR"] | index($a) != null)]
+     | length')"
 
 if [ "$count" -ge "$max" ]; then
   echo "skip: auto-review limit $max reached ($count earlier request(s))"

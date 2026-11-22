@@ -62,7 +62,8 @@ cd ai-for-developers-project-387
 - **Приватность**: публикация сессии на opencode.ai отключена явно (`share: 'false'`).
 - **Безопасность**: у ручной job `opencode` только `contents: write`, `issues: write` и
   `pull-requests: write`; у `review` — `contents: read`, `issues: write` (комментарий
-  публикуется через issues-эндпоинт, `pull-requests: write` не нужен), `checks: read`,
+  публикуется через issues-эндпоинт, `pull-requests: write` не нужен),
+  `pull-requests: read` (для `gh pr view/diff/checks`), `checks: read`,
   `statuses: read`; у `triage` — `contents: read`, `issues: write`. Чекаут — с
   `persist-credentials: false`. Ручные запуски по одной задаче
   выполняются по очереди; авторевью имеет отдельную группу и отменяет устаревший запуск при
@@ -117,7 +118,10 @@ cd ai-for-developers-project-387
   Сама job `triage` получает `contents: read` и `issues: write` и работает с эфемерным
   `GITHUB_TOKEN`, без PAT.
 - **Ограничения**: тайм-аут job запроса 5 минут, `concurrency` по номеру issue, без отмены
-  уже идущего запуска; агент `triage` ограничен 30 минутами.
+  уже идущего запуска; агент `triage` ограничен 30 минутами. У агента `triage` запрещены
+  `external_directory` (абсолютные пути вне репозитория), встроенные `read`/`glob`/`grep`/
+  `list`, `rg` и обходы `--no-index`/`--output`; файлы читаются через `git show HEAD:<path>`,
+  поиск — через `git grep` по отслеживаемым файлам. Команды с `.git` отклоняются.
 - **Ограничения агента**: отдельный агент `triage` в `opencode.json` не может править файлы
   (`edit`/`write`), запускать суб-агентов и задавать вопросы. Из shell разрешены только
   `gh issue view|list|comment|edit|close|reopen`, `gh label list` и read-only команды
@@ -156,10 +160,11 @@ cd ai-for-developers-project-387
   и `REVIEW.md`, только потом начинают публиковаться триггеры.
 - **Лимит ревью**: `.github/scripts/review-guard.sh` считает предыдущие
   триггер-комментарии на PR и не даёт позвать модель больше
-  `MAX_AUTO_REVIEWS_PER_PR` раз (repo variable, по умолчанию 3). Проверка выполняется
-  дважды: в job запроса до публикации триггера и в job `review` до вызова модели, чтобы
-  ручной комментарий с маркером не обошёл лимит. Старые триггеры не удаляются, иначе
-  счётчик всегда был бы нулевым.
+  `MAX_AUTO_REVIEWS_PER_PR` раз (repo variable, по умолчанию 3). Считаются только
+  комментарии с ролью OWNER/MEMBER/COLLABORATOR, иначе посторонние исчерпали бы лимит.
+  Проверка выполняется дважды: в job запроса до публикации триггера и в job `review` до
+  вызова модели, чтобы ручной комментарий с маркером не обошёл лимит. Старые триггеры не
+  удаляются, иначе счётчик всегда был бы нулевым.
 - **Где используется PAT**: только в job запроса — в проверке лимита, в проверке базового
   workflow и в вызове `gh pr comment`. Остальные шаги и job `review` получают эфемерный
   `GITHUB_TOKEN`; PAT в `.git/config` ревьюера не попадает. Действие записывает туда
@@ -194,7 +199,8 @@ cd ai-for-developers-project-387
   «Не проверено».
 - **Права и ограничения**: у job запроса `permissions: {}` и запись только через PAT;
   тайм-аут 5 минут. Job `review` получает `contents: read`, `issues: write`,
-  `checks: read`, `statuses: read` и эфемерный `GITHUB_TOKEN`, а не `AGENT_PUSH_TOKEN`;
+  `pull-requests: read`, `checks: read`, `statuses: read` и эфемерный `GITHUB_TOKEN`, а не
+  `AGENT_PUSH_TOKEN`;
   PAT в `.git/config` ревьюера не попадает. Агент `review` в `opencode.json` работает
   только на чтение: `edit`/`write`, встроенные `read`, `glob`, `grep` и `list`,
   суб-агенты, вопросы и внешние запросы запрещены. Shell ограничен read-only командами
@@ -204,7 +210,9 @@ cd ai-for-developers-project-387
   `--filters`, `git grep -O`/`--open-files-in-pager` и изменяющие формы
   `git branch`/`git remote` запрещены; любые команды, содержащие `.git/`, тоже
   запрещены. Он не запускает тесты и скрипты из PR, не одобряет и не запрашивает
-  изменения, не меняет метки.
+  изменения, не меняет метки. Job `review` запускается только на `issue_comment` для PR
+  (`github.event.issue.pull_request != null`) и чекаутит `ref` дефолтной ветки, поэтому
+  `.github/scripts/review-guard.sh` не может прийти из кода PR.
 - **Проверка read-only**: правила проверены на копии конфига агента `review` с подставным
   секретом в `.git/config`. `git diff --no-index .git/config ...`,
   `git diff --output=...` и `read`-инструмент блокируются, а обычные
