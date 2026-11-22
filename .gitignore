@@ -19,8 +19,9 @@ frontend/playwright-report/
 frontend/blob-report/
 
 # agent skills (installed via skills CLI)
-.agents/
-skills-lock.json
+# Skills themselves are tracked so the CI agent can use them; keep local state ignored.
+.agents/*
+!.agents/skills/
 
 # editors and OS
 .idea/
