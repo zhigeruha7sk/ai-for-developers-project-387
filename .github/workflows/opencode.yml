@@ -56,7 +56,33 @@ jobs:
           # build agent when the base branch has no `review` agent yet.
           node -e 'const fs = require("fs"); const c = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if (!c.agent || !c.agent.review) { console.error("base opencode.json has no review agent"); process.exit(1); }' "$RUNNER_TEMP/opencode-review.json"
 
+      # Count the other review trigger comments before the model is invoked.
+      # The request workflow already stops posting at the limit, but a manual
+      # marker comment must not bypass it. The current comment is excluded so
+      # the third and last allowed request still runs.
+      - name: Check auto-review limit
+        id: limit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          MAX_AUTO_REVIEWS_PER_PR: "3"
+        run: |
+          set -euo pipefail
+          count="$(gh api --paginate --slurp "repos/$GH_REPO/issues/$PR_NUMBER/comments" \
+            | jq --arg marker '<!-- opencode-auto-review -->' --argjson current "$COMMENT_ID" \
+              '[.[][] | select((.body // "") | contains($marker)) | select(.id != $current)] | length')"
+          if [ "$count" -ge "$MAX_AUTO_REVIEWS_PER_PR" ]; then
+            echo "Auto-review limit reached: $count earlier request(s), max $MAX_AUTO_REVIEWS_PER_PR."
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Auto-review requests so far: $count, max $MAX_AUTO_REVIEWS_PER_PR."
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run OpenCode review
+        if: steps.limit.outputs.allowed == 'true'
         uses: anomalyco/opencode/github@17b79f4e0c16dcff200b0417567ed22aeb2d7166 # github-v1.2.28
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
