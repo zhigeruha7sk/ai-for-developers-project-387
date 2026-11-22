@@ -38,6 +38,8 @@ jobs:
           # AGENT_PUSH_TOKEN (PAT with the workflow scope) lets the agent edit
           # .github/workflows files; without it the run falls back to GITHUB_TOKEN,
           # which cannot touch workflow files.
+          # TOKEN is what `opencode github run` reads to authenticate git pushes.
+          TOKEN: ${{ secrets.AGENT_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.AGENT_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.AGENT_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
         with:
