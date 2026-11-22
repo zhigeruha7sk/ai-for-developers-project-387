@@ -39,6 +39,23 @@ cd ai-for-developers-project-387
 
 ---
 
+## Воркфлоу GitHub Actions
+
+Все автоматизации лежат в `.github/workflows/`. Файл `hexlet-check.yml` сгенерирован Хекслетом:
+его нельзя редактировать, удалять или переименовывать репозиторий.
+
+| Файл                        | Триггер                                              | Назначение                                     |
+| --------------------------- | ---------------------------------------------------- | ---------------------------------------------- |
+| `hexlet-check.yml`          | push в любую ветку и теги                             | проверка проекта Хекслетом                     |
+| `opencode.yml`              | комментарий с `/oc` или `/opencode` в issue/строке PR | запуск агента OpenCode                         |
+| `opencode-triage.yml`       | `issues: opened`                                      | автотриаж нового issue                         |
+| `jactionlint.yml`           | push в `main` и любой `pull_request`                  | линт файлов GitHub Actions                     |
+
+Секреты: `OPENCODE_API_KEY` — доступ к модели, `AGENT_PUSH_TOKEN` — PAT для записи меток,
+комментариев и пуша из агента, `HEXLET_ID` — идентификатор проекта Хекслета.
+`AGENT_PUSH_TOKEN` должен иметь право `workflow`: без него агент не сможет изменить файлы
+в `.github/workflows/` (у `GITHUB_TOKEN` такого права нет).
+
 <details>
 <summary>Автоматические тесты Хекслета</summary>
 
@@ -56,12 +73,17 @@ cd ai-for-developers-project-387
 - **Кто может запустить**: только участники с ролями OWNER, MEMBER, COLLABORATOR —
   комментарий чужого автора джобу не запускает; внутри действия дополнительно проверяется
   право на запись в репозитории.
+- **Триггеры**: `issue_comment` и `pull_request_review_comment`; тайм-аут — 1440 минут,
+  чекаут — с `fetch-depth: 1`.
 - **Модель и ключ**: `opencode-go/deepseek-v4.1-flash` (провайдер OpenCode Go), ключ берётся из секрета
   `OPENCODE_API_KEY` (значение хранится в настройках репозитория и в код не попадает).
 - **Приватность**: публикация сессии на opencode.ai отключена явно (`share: 'false'`).
 - **Безопасность**: у джобы только `contents: write`, `issues: write` и
   `pull-requests: write`, чекаут — с `persist-credentials: false`, запуски по одной задаче
   выполняются по очереди (группа `concurrency` по номеру issue/PR).
+- **Токены**: сам агент авторизуется через `OPENCODE_API_KEY`, а git-пуш и обращения к GitHub —
+  через `TOKEN`, `GH_TOKEN` и `GITHUB_TOKEN`, которые берутся из `AGENT_PUSH_TOKEN` с откатом
+  на `GITHUB_TOKEN`. Для правки файлов в `.github/workflows/` у PAT должно быть право `workflow`.
 - **Коммиты агента**: шаг `Configure git identity` выставляет `user.name`/`user.email`
   (`opencode-agent[bot]`); без него `git commit` в раннере падает с `Author identity unknown`.
 - **Пуш агента**: шаг `Configure git credentials` прописывает в `.git/config` заголовок
@@ -69,9 +91,11 @@ cd ai-for-developers-project-387
   не настраивает, а чекаут идёт с `persist-credentials: false`, поэтому без этого шага
   `git push` падает с `could not read Username for 'https://github.com'`.
 - **Автотриаж**: комментарий с маркером `<!-- opencode-auto-triage -->` запускает отдельного
-  агента `triage`; ручные `/oc` и `/opencode` по-прежнему используют обычного агента.
-- **Статика воркфлоуов**: `.github/workflows/jactionlint.yml` проверяет файлы Actions
-  через jactionlint; та же проверка входит в `mise run check`.
+  агента `triage`; выбор делается через input `agent` (`triage` при маркере, пусто для ручных
+  `/oc` и `/opencode`, которые по-прежнему используют обычного агента).
+- **Линт workflow-файлов**: `.github/workflows/jactionlint.yml` проверяет файлы Actions
+  через закреплённый `jdx/jactionlint` v2.6.0 на push в `main` и на каждый pull request;
+  та же проверка входит в `mise run check`.
 
 Пример: `/oc объясни, что делает этот репозиторий`.
 
@@ -87,6 +111,8 @@ cd ai-for-developers-project-387
   Обращения с метками `skip-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`
   или `wontfix` не триажатся. Job-level `if` читает payload события `opened` и работает как
   быстрый фильтр, но не видит метки, поставленные позже.
+- **Подготовка**: шаг `Require AGENT_PUSH_TOKEN` падает сразу, если секрет не задан, затем
+  делается чекаут `main`, чтобы в workspace был доступен `.github/scripts/triage-guard.sh`.
 - **Перепроверка живого состояния**: прямо перед записью шаг `Re-check live issue state`
   запускает `.github/scripts/triage-guard.sh`, который перечитывает issue через API. Если issue
   оказался PR, его автор — бот или стоит любая из меток выше, шаг завершается успешно, а
