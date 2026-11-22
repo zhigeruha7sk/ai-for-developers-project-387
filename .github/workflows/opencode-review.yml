@@ -26,7 +26,11 @@ jobs:
     # Drafts are reviewed after they become ready. Fork PRs are outside this
     # repository and are not auto-reviewed; Dependabot and Renovate are skipped
     # as noise. PRs authored by the opencode agent are reviewed like any other.
+    # Only PRs targeting the default branch: for any other base GitHub runs the
+    # workflow definition from that base branch, which a same-repo author may be
+    # able to modify and use to expose AGENT_PUSH_TOKEN.
     if: |
+      github.event.pull_request.base.ref == github.event.repository.default_branch &&
       !github.event.pull_request.draft &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login != 'dependabot[bot]' &&

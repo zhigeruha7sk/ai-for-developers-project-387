@@ -120,8 +120,10 @@ cd ai-for-developers-project-387
 - **Ограничения**: тайм-аут job запроса 5 минут, `concurrency` по номеру issue, без отмены
   уже идущего запуска; агент `triage` ограничен 30 минутами. У агента `triage` запрещены
   `external_directory` (абсолютные пути вне репозитория), встроенные `read`/`glob`/`grep`/
-  `list`, `rg` и обходы `--no-index`/`--output`; файлы читаются через `git show HEAD:<path>`,
-  поиск — через `git grep` по отслеживаемым файлам. Команды с `.git` отклоняются.
+  `list`, `rg`, подстановки команд `$(...)`/бэктики, цепочки `;` и обходы
+  `--no-index`/`--output`; файлы читаются через `git show HEAD:<path>`, поиск — через
+  `git grep` по отслеживаемым файлам. Команды с `.git` отклоняются. `git remote`
+  ограничен формами `-v`/`get-url`.
 - **Ограничения агента**: отдельный агент `triage` в `opencode.json` не может править файлы
   (`edit`/`write`), запускать суб-агентов и задавать вопросы. Из shell разрешены только
   `gh issue view|list|comment|edit|close|reopen`, `gh label list` и read-only команды
@@ -141,8 +143,11 @@ cd ai-for-developers-project-387
 - **Почему `pull_request_target`**: для same-repo PR событие `pull_request` заставляет
   GitHub брать сам workflow из ветки PR. Владелец ветки мог бы заменить
   `opencode-review.yml`, добавить свой шаг и вывести `AGENT_PUSH_TOKEN`. На
-  `pull_request_target` GitHub всегда берёт определение workflow из базовой ветки, поэтому
-  подменить job запроса из PR нельзя. Альтернатива `workflow_run` тоже безопасна, но
+  `pull_request_target` GitHub берёт определение workflow из базовой ветки PR, поэтому
+  подменить его из самого PR нельзя. Граница доверия: авторевью включено только для PR с
+  базой = дефолтная ветка (`github.event.pull_request.base.ref ==
+  github.event.repository.default_branch`); для другой базы workflow исполнялся бы из
+  ветки, которую автор PR может изменить. Альтернатива `workflow_run` тоже безопасна, но
   `pull_request_target` сразу даёт номер PR и его метаданные без отдельного запуска-моста.
 - **PR-код не исполняется**: job запроса не делает checkout и не запускает скрипты,
   тесты или сборки из PR. Он читает только номер PR и имя репозитория из контекста
@@ -154,7 +159,7 @@ cd ai-for-developers-project-387
   `AGENT_PUSH_TOKEN` комментарий с `/oc` и маркером авторевью. Комментарий от
   `github-actions[bot]` не запускает `opencode.yml`, поэтому нужен PAT с правом
   комментировать PR. `opencode.yml` видит маркер и запускает отдельную job `review`
-  с агентом `review`. Перед публикацией job запроса читает `opencode.yml` из базовой
+  с агентом `review`. Перед публикацией job запроса читает `opencode.yml` из дефолтной
   ветки через API и пропускает запрос, если базовый workflow ещё не содержит обработчик
   маркера. Ошибка API (500, rate limit) — это ошибка шага, а не «маркера нет», иначе
   транзиентный сбой молча выключил бы авторевью. Это делает роллаут двухфазным: сначала
@@ -219,8 +224,9 @@ cd ai-for-developers-project-387
   `.github/scripts/review-guard.sh` не может прийти из кода PR.
 - **Проверка read-only**: правила проверены на копии конфига агента `review` с подставным
   секретом в `.git/config`. `git diff --no-index .git/config ...`,
-  `git diff --output=...` и `read`-инструмент блокируются, а обычные
-  `git diff <base>...HEAD` и `git show <rev>:<path>` работают. `deny`-правила идут после
+  `git diff --output=...`, `git show .git/config`, подстановки команд `$(...)`/бэктики,
+  цепочки `;` и `read`-инструмент блокируются, а обычные `git diff <base>...HEAD`,
+  `git log --pretty` и `git show <rev>:<path>` работают. `deny`-правила идут после
   `allow`, поэтому последнее совпадение закрывает обход.
 - **Тайм-аут и отмена**: запуск job `review` ограничен 20 минутами. При новом коммите
   `concurrency` по номеру PR отменяет устаревшее ревью (`cancel-in-progress: true`);
