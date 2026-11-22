@@ -38,6 +38,17 @@ jobs:
           git config --global user.name "opencode-agent[bot]"
           git config --global user.email "opencode-agent[bot]@users.noreply.github.com"
 
+      # With `use_github_token: true` opencode does not configure git credentials
+      # itself, and the checkout runs with `persist-credentials: false`, so
+      # `git push` would fail with "could not read Username for 'https://github.com'".
+      # Set the same header opencode would set when it exchanges an app token.
+      - name: Configure git credentials
+        env:
+          TOKEN: ${{ secrets.AGENT_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          header=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $header"
+
       - name: Run OpenCode
         uses: anomalyco/opencode/github@17b79f4e0c16dcff200b0417567ed22aeb2d7166 # github-v1.2.28
         env:

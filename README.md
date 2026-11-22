@@ -64,6 +64,10 @@ cd ai-for-developers-project-387
   по очереди (группа `concurrency` по номеру issue/PR).
 - **Коммиты агента**: шаг `Configure git identity` выставляет `user.name`/`user.email`
   (`opencode-agent[bot]`); без него `git commit` в раннере падает с `Author identity unknown`.
+- **Пуш агента**: шаг `Configure git credentials` прописывает в `.git/config` заголовок
+  `AUTHORIZATION` с `AGENT_PUSH_TOKEN`. При `use_github_token: true` сам opencode git-креденшелы
+  не настраивает, а чекаут идёт с `persist-credentials: false`, поэтому без этого шага
+  `git push` падает с `could not read Username for 'https://github.com'`.
 - **Статика воркфлоуов**: `.github/workflows/jactionlint.yml` проверяет файлы Actions
   через jactionlint; та же проверка входит в `mise run check`.
 
