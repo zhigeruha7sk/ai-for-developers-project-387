@@ -31,6 +31,13 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      # The agent commits its work before pushing. Runners have no git identity,
+      # so `git commit` fails with "Author identity unknown" without this step.
+      - name: Configure git identity
+        run: |
+          git config --global user.name "opencode-agent[bot]"
+          git config --global user.email "opencode-agent[bot]@users.noreply.github.com"
+
       - name: Run OpenCode
         uses: anomalyco/opencode/github@17b79f4e0c16dcff200b0417567ed22aeb2d7166 # github-v1.2.28
         env:

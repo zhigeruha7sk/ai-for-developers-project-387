@@ -62,6 +62,8 @@ cd ai-for-developers-project-387
 - **Безопасность**: у токена только `id-token: write` и `contents: read`, чекаут —
   с `persist-credentials: false`, тайм-аут 15 минут, запуски по одной задаче выполняются
   по очереди (группа `concurrency` по номеру issue/PR).
+- **Коммиты агента**: шаг `Configure git identity` выставляет `user.name`/`user.email`
+  (`opencode-agent[bot]`); без него `git commit` в раннере падает с `Author identity unknown`.
 - **Статика воркфлоуов**: `.github/workflows/jactionlint.yml` проверяет файлы Actions
   через jactionlint; та же проверка входит в `mise run check`.
 
