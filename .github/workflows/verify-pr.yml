@@ -1,0 +1,128 @@
+name: verify-pr
+
+# Verifies the exact pull request head (not the synthetic merge commit) in a
+# browser and stores the evidence — Playwright trace, the checked out commit SHA
+# and the verdict — as a workflow artifact. A human compares that SHA with the
+# current PR head before merging. The auto-review job may run before this
+# artifact exists and must not be treated as the check itself.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  # A newer push supersedes the verification of the previous head. Artifacts of
+  # earlier runs stay as evidence of the versions that were actually checked.
+  group: verify-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    # Drafts are verified after they become ready for review.
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # pull_request checks out a synthetic merge commit by default; the
+          # verification must cover the author's head instead.
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Record the checked out commit
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          mkdir -p verification
+          sha="$(git rev-parse HEAD)"
+          {
+            printf 'pr=%s\n' "$PR_NUMBER"
+            printf 'head_sha=%s\n' "$sha"
+            printf 'expected_head_sha=%s\n' "$EXPECTED_HEAD_SHA"
+            printf 'base_sha=%s\n' "$BASE_SHA"
+            # GITHUB_SHA is the synthetic merge commit for pull_request events;
+            # record it only to explain the CI metadata, it is not the verified
+            # version.
+            printf 'github_sha=%s\n' "$GITHUB_SHA"
+            printf 'run_url=%s/%s/actions/runs/%s\n' \
+              "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+            printf 'checked_out_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > verification/sha.txt
+          if [ "$sha" != "$EXPECTED_HEAD_SHA" ]; then
+            echo "::error::Checked out $sha, but the PR head is $EXPECTED_HEAD_SHA."
+            exit 1
+          fi
+          echo "Verified commit: \`$sha\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install mise toolchain
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3.6.3
+        env:
+          # Dependencies are installed in the next step, once and explicitly,
+          # instead of by the mise.toml postinstall hook.
+          MISE_NO_HOOKS: "1"
+        with:
+          install: true
+          cache: true
+
+      - name: Install project dependencies
+        run: mise run install
+
+      - name: Install browser system dependencies
+        run: npm --prefix frontend exec playwright install --with-deps chromium
+
+      - name: Run browser verification
+        id: e2e
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Playwright stamps the report with GITHUB_SHA, which for pull_request
+          # is the synthetic merge commit. The runner forbids overriding it via
+          # `env:`, but a shell assignment reaches the child processes, so the
+          # report and the artifact carry the same single SHA: the verified head.
+          GITHUB_SHA="$PR_HEAD_SHA" mise run test:e2e
+
+      - name: Record the verdict
+        if: ${{ always() }}
+        env:
+          E2E_OUTCOME: ${{ steps.e2e.outcome }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          case "$E2E_OUTCOME" in
+            success) result="passed" ;;
+            *) result="failed" ;;
+          esac
+          head_sha="$(git rev-parse HEAD)"
+          {
+            printf 'pr=%s\n' "$PR_NUMBER"
+            printf 'head_sha=%s\n' "$head_sha"
+            printf 'result=%s\n' "$result"
+            printf 'e2e_outcome=%s\n' "$E2E_OUTCOME"
+            printf 'run_url=%s/%s/actions/runs/%s\n' \
+              "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+          } > verification/result.txt
+          {
+            printf '### Browser verification: %s\n\n' "$result"
+            printf -- '- Commit: %s\n' "$head_sha"
+            printf -- '- Playwright trace and report: artifact of this run\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload verification artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          # The head SHA is part of the name, so an artifact of an older push is
+          # never mistaken for the current one.
+          name: verify-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          path: |
+            verification/
+            frontend/playwright-report/
+            frontend/test-results/
+          if-no-files-found: warn
+          retention-days: 14
