@@ -54,22 +54,30 @@ cd ai-for-developers-project-387
 в ветке обсуждения.
 
 - **Кто может запустить**: только участники с ролями OWNER, MEMBER, COLLABORATOR —
-  комментарий чужого автора джобу не запускает; внутри действия дополнительно проверяется
-  право на запись в репозитории.
+  комментарий чужого автора джобу не запускает. Проверка выполняется в job-level `if` по
+  `author_association`; действие `opencode/github` свою проверку прав пропускает, когда ему
+  передан `TOKEN`.
 - **Модель и ключ**: `opencode-go/deepseek-v4.1-flash` (провайдер OpenCode Go), ключ берётся из секрета
   `OPENCODE_API_KEY` (значение хранится в настройках репозитория и в код не попадает).
 - **Приватность**: публикация сессии на opencode.ai отключена явно (`share: 'false'`).
-- **Безопасность**: у джобы только `contents: write`, `issues: write` и
-  `pull-requests: write`, чекаут — с `persist-credentials: false`, запуски по одной задаче
-  выполняются по очереди (группа `concurrency` по номеру issue/PR).
-- **Коммиты агента**: шаг `Configure git identity` выставляет `user.name`/`user.email`
-  (`opencode-agent[bot]`); без него `git commit` в раннере падает с `Author identity unknown`.
+- **Безопасность**: у ручной job `opencode` только `contents: write`, `issues: write` и
+  `pull-requests: write`; у `review` — `contents: read`, `issues: read`,
+  `pull-requests: write`, `checks: read`, `statuses: read`; у `triage` — `contents: read`,
+  `issues: write`. Чекаут — с `persist-credentials: false`. Ручные запуски по одной задаче
+  выполняются по очереди; авторевью имеет отдельную группу и отменяет устаревший запуск при
+  новом коммите.
+- **Коммиты агента**: шаг `Configure git identity` (только в ручной job) выставляет
+  `user.name`/`user.email` (`opencode-agent[bot]`); без него `git commit` в раннере падает
+  с `Author identity unknown`.
 - **Пуш агента**: шаг `Configure git credentials` прописывает в `.git/config` заголовок
-  `AUTHORIZATION` с `AGENT_PUSH_TOKEN`. При `use_github_token: true` сам opencode git-креденшелы
-  не настраивает, а чекаут идёт с `persist-credentials: false`, поэтому без этого шага
-  `git push` падает с `could not read Username for 'https://github.com'`.
-- **Автотриаж**: комментарий с маркером `<!-- opencode-auto-triage -->` запускает отдельного
-  агента `triage`; ручные `/oc` и `/opencode` по-прежнему используют обычного агента.
+  `AUTHORIZATION` с `AGENT_PUSH_TOKEN` только в ручной job. Чекаут идёт с
+  `persist-credentials: false`, поэтому без этого шага `git push` падает с
+  `could not read Username for 'https://github.com'`. Действие `opencode/github` само пишет
+  токен в `.git/config` на время сессии и восстанавливает конфиг в конце; поэтому в
+  `review` и `triage` передаётся только эфемерный `GITHUB_TOKEN`, а PAT — нет.
+- **Автотриаж и авторевью**: комментарий с маркером автотриажа запускает отдельного агента
+  `triage`, с маркером авторевью — агента `review`; ручные `/oc` и `/opencode` по-прежнему
+  используют обычного агента.
 - **Статика воркфлоуов**: `.github/workflows/jactionlint.yml` проверяет файлы Actions
   через jactionlint; та же проверка входит в `mise run check`.
 
@@ -102,16 +110,60 @@ cd ai-for-developers-project-387
   `ready-for-agent`, `ready-for-human`, `wontfix`). Для `ready-for-agent` публикуется agent
   brief по `AGENT-BRIEF.md`; при совпадении с `.out-of-scope/` ставится `wontfix` с
   объяснением в комментарии.
-- **Права**: у джобы `permissions: {}` — токен `GITHUB_TOKEN` не используется. Комментарий
-  публикуется через `AGENT_PUSH_TOKEN` (обязательный секрет): комментарий от
+- **Права**: у job запроса `permissions: {}` — токен `GITHUB_TOKEN` не используется.
+  Комментарий публикуется через `AGENT_PUSH_TOKEN` (обязательный секрет): комментарий от
   `github-actions[bot]` не запускает `opencode.yml`, а комментарий от владельца PAT запускает.
-- **Ограничения**: тайм-аут 5 минут, `concurrency` по номеру issue, без отмены уже идущего
-  запуска.
+  Сама job `triage` получает `contents: read` и `issues: write` и работает с эфемерным
+  `GITHUB_TOKEN`, без PAT.
+- **Ограничения**: тайм-аут job запроса 5 минут, `concurrency` по номеру issue, без отмены
+  уже идущего запуска; агент `triage` ограничен 30 минутами.
 - **Ограничения агента**: отдельный агент `triage` в `opencode.json` не может править файлы
   (`edit`/`write`), запускать суб-агентов и задавать вопросы. Из shell разрешены только
   `gh issue view|list|comment|edit|close|reopen`, `gh label list` и read-only команды
   `git`/`ls`/`rg`; опасные обходы `rg --pre` и `git diff --output` запрещены. Он не меняет
   код, не создаёт ветки, коммиты и PR.
+
+</details>
+
+<details>
+<summary>Авторевью пулл-реквестов</summary>
+
+Файл `.github/workflows/opencode-review.yml` реагирует на `pull_request` (`opened`,
+`synchronize`, `reopened`, `ready_for_review`) и запускает независимый разбор каждого PR
+по критериям `REVIEW.md`.
+
+- **Фильтры**: черновики пропускаются до `ready_for_review`. PR из форков, а также от
+  Dependabot и Renovate пропускаются, потому что им не доступны секреты репозитория.
+  PR, созданные агентом OpenCode, ревьюятся как обычные.
+- **Как устроено**: job запроса работает с `permissions: {}` и публикует через
+  `AGENT_PUSH_TOKEN` комментарий с `/oc` и маркером авторевью. Комментарий от
+  `github-actions[bot]` не запускает `opencode.yml`, поэтому нужен PAT с правом
+  комментировать PR. `opencode.yml` видит маркер и запускает отдельную job `review`
+  с агентом `review`.
+- **Критерии**: `REVIEW.md` в корне репозитория. Job `review` делает checkout с
+  `fetch-depth: 0` и читает версию из базовой ветки (`git show origin/main:REVIEW.md`),
+  чтобы PR не мог подменить критерии. Если файла в базовой ветке нет, ревью
+  останавливается с пометкой «не проверено», а версия из PR как критерии не используется.
+  Разбор идёт по двум осям: спецификация (`docs/spec.md`, issue, ADR) и стандарты
+  (`AGENTS.md`, `REVIEW.md`).
+- **Формат**: первая строка `> *This was generated by AI during automatic review.*`, затем
+  итог, находки с severity, `file:line` и пунктом `REVIEW.md`, отдельно «Проверено» и
+  «Не проверено».
+- **Права и ограничения**: у job запроса `permissions: {}` и запись только через PAT;
+  тайм-аут 5 минут. Job `review` получает `contents: read`, `issues: read`,
+  `pull-requests: write`, `checks: read`, `statuses: read` и эфемерный `GITHUB_TOKEN`,
+  а не `AGENT_PUSH_TOKEN`; PAT в `.git/config` ревьюера не попадает. Агент `review` в
+  `opencode.json` работает только на чтение: `edit`/`write`, суб-агенты, вопросы и внешние
+  запросы запрещены, shell ограничен read-only командами `gh`/`git`/`rg`; запись через
+  `--output`, `--pre`, `--ext-diff`, `--textconv`, `--filters` и изменяющие формы
+  `git branch`/`git remote` запрещены. Он не запускает тесты и скрипты из PR, не одобряет
+  и не запрашивает изменения, не меняет метки.
+- **Тайм-аут и отмена**: запуск job `review` ограничен 20 минутами. При новом коммите
+  `concurrency` по номеру PR отменяет устаревшее ревью (`cancel-in-progress: true`);
+  ручные `/oc` не отменяются и сохраняют прежний тайм-аут.
+- **Шаблон PR**: `.github/pull_request_template.md` требует заполнить проверки, риск и
+  способ отката. Авторевью — это комментарий, а не формальное одобрение: решение о мерже
+  принимает человек.
 
 </details>
 
