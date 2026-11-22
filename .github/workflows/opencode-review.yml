@@ -39,34 +39,29 @@ jobs:
     steps:
       # Cap the number of automatic reviews per pull request. This runs before
       # the trigger comment is posted, so the model is never called once the
-      # limit is reached. The counter is the number of earlier trigger comments
-      # on the PR; a PR merged and reopened keeps its history.
+      # limit is reached. The guard lives in the base branch; it is fetched
+      # through the API, so the job still never checks out or runs PR code.
       - name: Check auto-review limit
         id: limit
         env:
           GH_TOKEN: ${{ secrets.AGENT_PUSH_TOKEN }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          MAX_AUTO_REVIEWS_PER_PR: "3"
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          MAX_AUTO_REVIEWS_PER_PR: ${{ vars.MAX_AUTO_REVIEWS_PER_PR }}
         run: |
           set -euo pipefail
           if [ -z "$GH_TOKEN" ]; then
             echo "::error::AGENT_PUSH_TOKEN is required to check the auto-review limit."
             exit 1
           fi
-          count="$(gh api --paginate --slurp "repos/$GH_REPO/issues/$PR_NUMBER/comments" \
-            | jq --arg marker '<!-- opencode-auto-review -->' \
-              '[.[][] | select((.body // "") | contains($marker))] | length')"
-          if [ "$count" -ge "$MAX_AUTO_REVIEWS_PER_PR" ]; then
-            echo "Auto-review limit reached: $count earlier request(s), max $MAX_AUTO_REVIEWS_PER_PR."
-            echo "allowed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Auto-review requests so far: $count, max $MAX_AUTO_REVIEWS_PER_PR."
-            echo "allowed=true" >> "$GITHUB_OUTPUT"
-          fi
+          guard="$(gh api "repos/$GH_REPO/contents/.github/scripts/review-guard.sh?ref=$DEFAULT_BRANCH" \
+            --jq .content | base64 -d)"
+          decision="$(bash -s -- "$PR_NUMBER" <<< "$guard")"
+          echo "decision=$decision" >> "$GITHUB_OUTPUT"
 
       - name: Request independent review
-        if: steps.limit.outputs.allowed == 'true'
+        if: steps.limit.outputs.decision == 'run'
         # The PAT is exposed only in the limit check and in this step, which
         # calls `gh pr comment`. Nothing from the PR is interpolated into the
         # shell: BODY is static and PR_NUMBER/GH_REPO come from the workflow
