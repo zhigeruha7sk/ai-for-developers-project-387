@@ -188,6 +188,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProblemDetail'
+  /api/version:
+    get:
+      operationId: Api_version
+      summary: Версия сборки приложения
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionResponse'
 components:
   schemas:
     Booking:
@@ -360,6 +372,27 @@ components:
           type: boolean
           description: Можно ли записаться на этот слот.
       description: Свободный или занятый слот на выбранную дату.
+    VersionResponse:
+      type: object
+      required:
+        - commit
+        - commitShort
+        - branch
+        - builtAt
+      properties:
+        commit:
+          type: string
+          description: Полный SHA коммита, из которого собрано приложение, или `unknown`.
+        commitShort:
+          type: string
+          description: Короткий SHA коммита или `unknown`.
+        branch:
+          type: string
+          description: Ветка, из которой собрана сборка, или `unknown`.
+        builtAt:
+          type: string
+          description: Время сборки в формате ISO 8601 (UTC) или `unknown`.
+      description: Сборка приложения.
 servers:
   - url: http://localhost:8080
     description: Local development server
