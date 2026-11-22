@@ -97,6 +97,7 @@ export default function BookingPage() {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [slotsState, setSlotsState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [guestName, setGuestName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -166,8 +167,10 @@ export default function BookingPage() {
     });
   };
 
+  const trimmedGuestName = guestName.trim();
+
   const book = async () => {
-    if (!typeId || !selectedSlot) return;
+    if (!typeId || !selectedSlot || !trimmedGuestName) return;
     setSubmitting(true);
     setError(null);
     const result = await apiCreateBooking({
@@ -175,7 +178,7 @@ export default function BookingPage() {
         meetingTypeId: typeId,
         date: selectedDate,
         startTime: selectedSlot,
-        guestName: guest.name || 'Гость',
+        guestName: trimmedGuestName,
         guestAvatar: guest.avatar,
       },
     });
@@ -226,9 +229,17 @@ export default function BookingPage() {
             <span className="avatar" aria-hidden="true">
               {guest.avatar}
             </span>
-            <span className="guest-name">{guest.name || 'Гость'}</span>
             <span className="guest-role">Гость</span>
           </span>
+
+          <label className="guest-name-field">
+            Имя гостя
+            <input
+              value={guestName}
+              onChange={(event) => setGuestName(event.target.value)}
+              autoComplete="off"
+            />
+          </label>
 
           <h2 className="booking-type-name">{meetingType.name}</h2>
           <p className="booking-type-desc">{meetingType.description}</p>
@@ -334,7 +345,7 @@ export default function BookingPage() {
             <button
               type="button"
               className="button button-primary"
-              disabled={!selectedSlot || submitting}
+              disabled={!selectedSlot || !trimmedGuestName || submitting}
               onClick={book}
             >
               {submitting ? 'Записываем…' : 'Продолжить'}

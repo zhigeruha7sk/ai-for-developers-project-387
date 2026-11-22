@@ -37,6 +37,10 @@ const createdBooking: Booking = {
   guestAvatar: '🦊',
 };
 
+function enterGuestName(name: string) {
+  fireEvent.change(screen.getByLabelText('Имя гостя'), { target: { value: name } });
+}
+
 function renderBookingPage() {
   return render(
     <MemoryRouter initialEntries={['/booking/type-1']}>
@@ -78,6 +82,7 @@ describe('страница бронирования', () => {
     renderBookingPage();
 
     fireEvent.click(await screen.findByRole('button', { name: /09:00 – 09:30/ }));
+    enterGuestName('  Иван Петров  ');
     fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
 
     expect(await screen.findByRole('status')).toHaveTextContent('Вы успешно записаны!');
@@ -91,11 +96,76 @@ describe('страница бронирования', () => {
         meetingTypeId: 'type-1',
         date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
         startTime: '09:00:00',
-        guestName: 'Гость',
+        guestName: 'Иван Петров',
         guestAvatar: '🦊',
       },
     });
     expect(localStorage.getItem('calendar-guest')).not.toBeNull();
+    expect(JSON.parse(localStorage.getItem('calendar-guest') ?? '{}')).toMatchObject({
+      name: '',
+    });
+  });
+
+  it('после записи не генерирует имя, а сохранённое имя гостя не заменяет', async () => {
+    localStorage.setItem(
+      'calendar-guest',
+      JSON.stringify({ name: 'Анна Постоянная', avatar: '🦉' }),
+    );
+    vi.mocked(apiCreateBooking).mockResolvedValue({ data: createdBooking, error: undefined });
+
+    renderBookingPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: /09:00 – 09:30/ }));
+    enterGuestName('Иван Петров');
+    fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
+
+    await screen.findByRole('status');
+    expect(JSON.parse(localStorage.getItem('calendar-guest') ?? '{}')).toMatchObject({
+      name: 'Анна Постоянная',
+    });
+  });
+
+  it('поле имени пустое при открытии и не подставляется из localStorage', async () => {
+    localStorage.setItem(
+      'calendar-guest',
+      JSON.stringify({ name: 'Анна Постоянная', avatar: '🦉' }),
+    );
+
+    renderBookingPage();
+
+    const input = await screen.findByLabelText('Имя гостя');
+    expect(input).toHaveValue('');
+    expect(screen.queryByText('Анна Постоянная')).toBeNull();
+  });
+
+  it('бейдж гостя показывает «Гость» и не подставляет сохранённое имя', async () => {
+    localStorage.setItem(
+      'calendar-guest',
+      JSON.stringify({ name: 'Анна Постоянная', avatar: '🦉' }),
+    );
+
+    renderBookingPage();
+
+    const badge = (await screen.findByText('Гость')).closest('.guest-badge');
+    expect(badge).not.toBeNull();
+    expect(badge).toHaveTextContent('🦉');
+    expect(badge).not.toHaveTextContent('Анна Постоянная');
+  });
+
+  it('пустое или пробельное имя блокирует «Продолжить» даже с выбранным слотом', async () => {
+    renderBookingPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: /09:00 – 09:30/ }));
+    const submit = screen.getByRole('button', { name: 'Продолжить' });
+
+    expect(submit).toBeDisabled();
+
+    enterGuestName('   ');
+    expect(submit).toBeDisabled();
+
+    enterGuestName('Мария');
+    expect(submit).toBeEnabled();
+    expect(apiCreateBooking).not.toHaveBeenCalled();
   });
 
   it('конфликт: занятый слот отклоняется с понятным сообщением гостю', async () => {
@@ -108,6 +178,7 @@ describe('страница бронирования', () => {
     renderBookingPage();
 
     fireEvent.click(await screen.findByRole('button', { name: /09:00 – 09:30/ }));
+    enterGuestName('Гость Конфликт');
     fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
 
     expect(
@@ -145,6 +216,7 @@ describe('страница бронирования', () => {
     renderBookingPage();
 
     fireEvent.click(await screen.findByRole('button', { name: /09:00 – 09:30/ }));
+    enterGuestName('Гость Ошибка');
     fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
 
     expect(
@@ -177,6 +249,7 @@ describe('страница бронирования', () => {
     renderBookingApp();
 
     fireEvent.click(await screen.findByRole('button', { name: /09:00 – 09:30/ }));
+    enterGuestName('Иван Возврат');
     fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
 
     expect(await screen.findByRole('status')).toHaveTextContent(
