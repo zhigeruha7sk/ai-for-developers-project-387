@@ -3,10 +3,11 @@
 ignores:
   # The issue_comment trigger is required for the /oc comment integration: the agent
   # must start from a comment. Mitigations in the workflow: the job runs only for
-  # OWNER/MEMBER/COLLABORATOR comments (author_association gate), the token has no
-  # write scopes (id-token: write + contents: read), OPENCODE_API_KEY is the only
-  # secret, only the default branch is checked out with persist-credentials: false.
+  # OWNER/MEMBER/COLLABORATOR comments (author_association gate), the token is limited
+  # to id-token: write, contents: read, issues: write, pull-requests: write (needed by
+  # the agent's gh commands), OPENCODE_API_KEY is the only model secret, only the default
+  # branch is checked out with persist-credentials: false.
   - rule: dangerous-triggers
     file: .github/workflows/opencode.yml
-    reason: required by the /oc comment integration; gated by author_association, no write scopes, single model-key secret
+    reason: required by the /oc comment integration; gated by author_association, token limited to issues/PR writes, single model-key secret
     expires: "2027-05-19"
