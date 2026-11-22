@@ -29,7 +29,9 @@ jobs:
     # and the reviewer parses untrusted pull request text.
     permissions:
       contents: read
-      issues: read
+      # The action posts its review through the issues comments endpoint; every
+      # pull request is an issue. It still cannot push or edit repository files.
+      issues: write
       pull-requests: write
       checks: read
       statuses: read

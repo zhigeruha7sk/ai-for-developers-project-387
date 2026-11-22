@@ -61,9 +61,10 @@ cd ai-for-developers-project-387
   `OPENCODE_API_KEY` (значение хранится в настройках репозитория и в код не попадает).
 - **Приватность**: публикация сессии на opencode.ai отключена явно (`share: 'false'`).
 - **Безопасность**: у ручной job `opencode` только `contents: write`, `issues: write` и
-  `pull-requests: write`; у `review` — `contents: read`, `issues: read`,
-  `pull-requests: write`, `checks: read`, `statuses: read`; у `triage` — `contents: read`,
-  `issues: write`. Чекаут — с `persist-credentials: false`. Ручные запуски по одной задаче
+  `pull-requests: write`; у `review` — `contents: read`, `issues: write` (комментарий
+  публикуется через issues-эндпоинт), `pull-requests: write`, `checks: read`,
+  `statuses: read`; у `triage` — `contents: read`, `issues: write`. Чекаут — с
+  `persist-credentials: false`. Ручные запуски по одной задаче
   выполняются по очереди; авторевью имеет отдельную группу и отменяет устаревший запуск при
   новом коммите.
 - **Коммиты агента**: шаг `Configure git identity` (только в ручной job) выставляет
@@ -129,8 +130,9 @@ cd ai-for-developers-project-387
 <summary>Авторевью пулл-реквестов</summary>
 
 Файл `.github/workflows/opencode-review.yml` реагирует на `pull_request_target`
-(`opened`, `synchronize`, `reopened`, `ready_for_review`) и запускает независимый разбор
-каждого PR по критериям `REVIEW.md`.
+(`opened`, `synchronize`, `reopened`, `ready_for_review`, `edited`) и запускает независимый
+разбор каждого PR по критериям `REVIEW.md`. Событие `edited` перезапускает ревью после
+правки тела PR, включая разделы «Риск» и «Откат».
 
 - **Почему `pull_request_target`**: для same-repo PR событие `pull_request` заставляет
   GitHub брать сам workflow из ветки PR. Владелец ветки мог бы заменить
@@ -148,10 +150,18 @@ cd ai-for-developers-project-387
   `AGENT_PUSH_TOKEN` комментарий с `/oc` и маркером авторевью. Комментарий от
   `github-actions[bot]` не запускает `opencode.yml`, поэтому нужен PAT с правом
   комментировать PR. `opencode.yml` видит маркер и запускает отдельную job `review`
-  с агентом `review`.
+  с агентом `review`. Перед публикацией job запроса читает `opencode.yml` из базовой
+  ветки через API и пропускает запрос, если базовый workflow ещё не содержит обработчик
+  маркера. Это делает роллаут двухфазным: сначала в базовую ветку попадают job `review`
+  и `REVIEW.md`, только потом начинают публиковаться триггеры. Предыдущие
+  триггер-комментарии с тем же маркером удаляются, чтобы отменённые запуски не оставляли
+  мусор.
 - **Где используется PAT**: только в шаге `Request independent review` job запроса, в
-  вызове `gh pr comment`. Остальные шаги и job `review` получают эфемерный
-  `GITHUB_TOKEN`; в `.git/config` ревьюера PAT не попадает.
+  проверке базового workflow, удалении старых триггеров и вызове `gh pr comment`.
+  Остальные шаги и job `review` получают эфемерный `GITHUB_TOKEN`; PAT в `.git/config`
+  ревьюера не попадает. Действие записывает туда `GITHUB_TOKEN` на время сессии, поэтому
+  агенту `review` запрещены встроенные `read`/`glob`/`grep`/`list` и обходы через shell:
+  прочитать `.git/config` разрешёнными командами нельзя.
 - **Конфиг ревьюера из базовой ветки**: job `review` сначала сохраняет
   `opencode.json` из базовой ветки (`git show origin/<default>:opencode.json`) во
   временный файл, затем запускает действие с `OPENCODE_CONFIG` на этот файл и с
@@ -160,25 +170,33 @@ cd ai-for-developers-project-387
   `review`, его промпт или права через свой `opencode.json`, `.opencode/` или `.agents/`.
 - **Критерии**: `REVIEW.md` в корне репозитория. Job `review` делает checkout с
   `fetch-depth: 0` и читает версию из базовой ветки (`git show origin/<default>:REVIEW.md`),
-  чтобы PR не мог подменить критерии. Если файла в базовой ветке нет, ревью
-  останавливается с пометкой «не проверено», а версия из PR как критерии не используется.
-  Разбор идёт по двум осям: спецификация (`docs/spec.md`, issue, ADR) и стандарты
-  (`AGENTS.md`, `REVIEW.md`).
+  чтобы PR не мог подменить критерии. Если файла в базовой ветке нет, PR считается
+  bootstrap-изменением, которое этот файл и добавляет: ревьюер читает его через
+  `git show HEAD:REVIEW.md` только для разбора самого bootstrap-PR и обязан добавить
+  пометку `Bootstrap: REVIEW.md ещё нет в базовой ветке, критерии взяты из PR.` сразу после
+  дисклеймера. Как только
+  файл появляется в базовой ветке, версия из PR не используется. Разбор идёт по двум осям:
+  спецификация (`docs/spec.md`, issue, ADR) и стандарты (`AGENTS.md`, `REVIEW.md`).
 - **До мержа**: пока `opencode-review.yml` есть только в ветке PR, авторевью не
-  запустится: `pull_request_target` берёт workflow из базовой ветки. Новая версия
-  включается после мержа.
+  запустится: `pull_request_target` берёт workflow из базовой ветки. Job запроса
+  дополнительно проверяет, что базовый `opencode.yml` уже умеет обрабатывать маркер, и
+  иначе ничего не публикует. Поэтому после мержа сначала включается job `review`, а
+  триггеры начинают работать только со следующего PR.
 - **Формат**: первая строка `> *This was generated by AI during automatic review.*`, затем
   итог, находки с severity, `file:line` и пунктом `REVIEW.md`, отдельно «Проверено» и
   «Не проверено».
 - **Права и ограничения**: у job запроса `permissions: {}` и запись только через PAT;
-  тайм-аут 5 минут. Job `review` получает `contents: read`, `issues: read`,
+  тайм-аут 5 минут. Job `review` получает `contents: read`, `issues: write`,
   `pull-requests: write`, `checks: read`, `statuses: read` и эфемерный `GITHUB_TOKEN`,
   а не `AGENT_PUSH_TOKEN`; PAT в `.git/config` ревьюера не попадает. Агент `review` в
-  `opencode.json` работает только на чтение: `edit`/`write`, суб-агенты, вопросы и внешние
-  запросы запрещены, shell ограничен read-only командами `gh`/`git`/`rg`; запись через
-  `--output`, `--pre`, `--ext-diff`, `--textconv`, `--filters` и изменяющие формы
-  `git branch`/`git remote` запрещены. Он не запускает тесты и скрипты из PR, не одобряет
-  и не запрашивает изменения, не меняет метки.
+  `opencode.json` работает только на чтение: `edit`/`write`, встроенные `read`, `glob`,
+  `grep` и `list`, суб-агенты, вопросы и внешние запросы запрещены. Shell ограничен
+  read-only командами `gh`/`git`; файлы читаются через `git show`, `git grep` (только
+  отслеживаемые файлы) и `git diff`, произвольный `rg` и абсолютные пути недоступны.
+  Запись и запуск внешних программ через `--output`, `--pre`, `--no-index`, `--ext-diff`,
+  `--textconv`, `--filters`, `git grep -O`/`--open-files-in-pager` и изменяющие формы
+  `git branch`/`git remote` запрещены. Он не запускает тесты и скрипты
+  из PR, не одобряет и не запрашивает изменения, не меняет метки.
 - **Тайм-аут и отмена**: запуск job `review` ограничен 20 минутами. При новом коммите
   `concurrency` по номеру PR отменяет устаревшее ревью (`cancel-in-progress: true`);
   ручные `/oc` не отменяются и сохраняют прежний тайм-аут.
