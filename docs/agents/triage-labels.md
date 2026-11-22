@@ -23,6 +23,13 @@ Edit the "Label in our tracker" column to match whatever vocabulary you actually
 already carries `skip-triage`, `needs-info`, `ready-for-agent`, `ready-for-human` or `wontfix`.
 Add `skip-triage` when a new issue must not be triaged automatically.
 
+The job-level `if` is only a fast filter over the `issues: opened` payload; it cannot see
+labels added after `opened`. Immediately before writing, a `Re-check live issue state` step runs
+`.github/scripts/triage-guard.sh`, which re-reads the issue through the API. If the live issue is
+a PR, its author is a bot, or it carries any of the labels above, the step exits 0 and neither
+`needs-triage` nor the comment is written. `needs-triage` is not a blocker because this workflow
+sets it itself. The `triage` agent repeats the same check as its first step.
+
 **What happens.** The workflow adds `needs-triage` and posts a comment containing
 `/oc` plus the auto-triage marker. `opencode.yml` sees the marker and runs the dedicated
 `triage` agent instead of the normal agent used for manual `/oc` commands.

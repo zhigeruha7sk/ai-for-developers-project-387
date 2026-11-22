@@ -12,8 +12,9 @@ concurrency:
 
 jobs:
   triage:
-    # Issues only (never PRs), never bots, and never issues that already carry a
-    # state where triage is not wanted.
+    # Cheap filter over the `issues: opened` payload. It is NOT authoritative:
+    # labels added after `opened` are not in the payload, so the job re-reads the
+    # live issue through the API right before writing (see the guard step).
     if: |
       !github.event.issue.pull_request &&
       github.event.issue.user.type != 'Bot' &&
@@ -37,7 +38,20 @@ jobs:
             exit 1
           fi
 
+      # The payload may be stale: a label such as `ready-for-agent` can be added
+      # after `opened`. Re-read the live issue and stop with success, without
+      # touching labels or comments, when triage is not wanted.
+      - name: Re-check live issue state
+        id: guard
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_PUSH_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          decision="$(.github/scripts/triage-guard.sh "${{ github.event.issue.number }}")"
+          echo "decision=$decision" >> "$GITHUB_OUTPUT"
+
       - name: Apply needs-triage label
+        if: steps.guard.outputs.decision == 'run'
         env:
           GH_TOKEN: ${{ secrets.AGENT_PUSH_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -45,6 +59,7 @@ jobs:
         run: gh issue edit "$ISSUE_NUMBER" --add-label needs-triage
 
       - name: Request triage through opencode
+        if: steps.guard.outputs.decision == 'run'
         env:
           GH_TOKEN: ${{ secrets.AGENT_PUSH_TOKEN }}
           GH_REPO: ${{ github.repository }}
