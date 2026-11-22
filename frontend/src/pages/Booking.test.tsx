@@ -107,22 +107,28 @@ describe('страница бронирования', () => {
   });
 
   it('после записи не генерирует имя, а сохранённое имя гостя не заменяет', async () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.99);
     localStorage.setItem(
       'calendar-guest',
       JSON.stringify({ name: 'Анна Постоянная', avatar: '🦉' }),
     );
     vi.mocked(apiCreateBooking).mockResolvedValue({ data: createdBooking, error: undefined });
 
-    renderBookingPage();
+    try {
+      renderBookingPage();
 
-    fireEvent.click(await screen.findByRole('button', { name: /09:00 – 09:30/ }));
-    enterGuestName('Иван Петров');
-    fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
+      fireEvent.click(await screen.findByRole('button', { name: /09:00 – 09:30/ }));
+      enterGuestName('Иван Петров');
+      fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
 
-    await screen.findByRole('status');
-    expect(JSON.parse(localStorage.getItem('calendar-guest') ?? '{}')).toMatchObject({
-      name: 'Анна Постоянная',
-    });
+      await screen.findByRole('status');
+      expect(JSON.parse(localStorage.getItem('calendar-guest') ?? '{}')).toMatchObject({
+        name: 'Анна Постоянная',
+        avatar: '🦁',
+      });
+    } finally {
+      random.mockRestore();
+    }
   });
 
   it('поле имени пустое при открытии и не подставляется из localStorage', async () => {
