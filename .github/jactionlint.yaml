@@ -15,10 +15,11 @@ ignores:
   # pull_request_target is deliberate: with pull_request GitHub runs the workflow
   # from the PR head for same-repo branches, so a PR could replace the request job
   # and print AGENT_PUSH_TOKEN. The base-branch definition below never checks out
-  # or executes PR code; the PAT is exposed only to `gh pr comment`, the body is
-  # static and fork/bot PRs are filtered out. See the README section "Авторевью
+  # or executes PR code; the PAT is exposed only to the review-limit check and
+  # `gh pr comment`, the body is static, fork PRs are skipped, and only
+  # Dependabot/Renovate are filtered as noise. See the README section "Авторевью
   # пулл-реквестов".
   - rule: dangerous-triggers
     file: .github/workflows/opencode-review.yml
-    reason: pull_request_target keeps the workflow definition on the base branch; no checkout/PR code, static comment body, PAT only in gh pr comment, forks and bots skipped
+    reason: pull_request_target keeps the workflow definition on the base branch; no checkout/PR code, static comment body, PAT only in the review-limit check and gh pr comment, fork PRs skipped, only Dependabot/Renovate filtered
     expires: "2027-05-19"

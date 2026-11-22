@@ -37,6 +37,11 @@
           "rg*": "allow",
           "rg --pre*": "deny",
           "*--pre*": "deny",
+          "*--no-index*": "deny",
+          "*--output*": "deny",
+          "rg*--hidden*": "deny",
+          "rg*--no-ignore*": "deny",
+          "*.git/*": "deny",
           "git diff --output*": "deny",
           "git diff*--output*": "deny"
         }
@@ -76,9 +81,10 @@
           "git ls-files*": "allow",
           "git cat-file*": "allow",
           "git grep*": "allow",
-          "*--pre*": "deny",
+          "*--pre=*": "deny",
           "*--no-index*": "deny",
           "*--output*": "deny",
+          "*.git/*": "deny",
           "*--ext-diff*": "deny",
           "*--textconv*": "deny",
           "*--filters*": "deny",

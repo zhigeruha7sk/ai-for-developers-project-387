@@ -91,6 +91,7 @@
 - Не редактировать и не удалять `.github/workflows/hexlet-check.yml`.
 - Не переименовывать репозиторий.
 - Не коммитить `node_modules`, `backend/target`, `frontend/dist`, `frontend/src/api/generated`.
+- Критерии ревью PR — `REVIEW.md` в корне; авторевью и люди проверяют изменения по нему.
 
 ## Agent skills
 
