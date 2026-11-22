@@ -77,9 +77,13 @@ description = "Run the browser booking scenario against the real backend"
 depends = ["sdk:gen"]
 run = "npm --prefix frontend run test:e2e"
 
+[tasks."guard:test"]
+description = "Test the automatic triage guard decision matrix"
+run = "bash .github/scripts/triage-guard.test.sh"
+
 [tasks.test]
 description = "Run every test suite"
-depends = ["backend:test", "frontend:test", "test:e2e"]
+depends = ["backend:test", "frontend:test", "test:e2e", "guard:test"]
 
 [tasks.check]
 description = "Run every check used locally and in CI"
