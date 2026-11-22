@@ -82,7 +82,7 @@ function formatSelectedDate(iso: string): string {
 }
 
 export default function BookingPage() {
-  const { guest, refresh } = useGuest();
+  const { guest, refreshAvatar } = useGuest();
   const navigate = useNavigate();
   const { typeId } = useParams<{ typeId: string }>();
 
@@ -191,7 +191,7 @@ export default function BookingPage() {
       return;
     }
     // По спецификации: после успешной записи клиент меняется.
-    refresh();
+    refreshAvatar();
     setSuccess(true);
   };
 

@@ -22,7 +22,7 @@ export function useGuest() {
     }
   }, []);
 
-  const refresh = () => {
+  const refreshAvatar = () => {
     const avatar = ['🦊', '🦉', '🐼', '🐺', '🦁'][Math.floor(Math.random() * 5)];
     // Меняется только аватар: имя гостя вводит он сам, случайно не генерируем.
     const newGuest: Guest = { name: guest.name, avatar };
@@ -30,5 +30,5 @@ export function useGuest() {
     localStorage.setItem('calendar-guest', JSON.stringify(newGuest));
   };
 
-  return { guest, refresh };
+  return { guest, refreshAvatar };
 }
