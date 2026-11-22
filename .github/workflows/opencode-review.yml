@@ -88,12 +88,16 @@ jobs:
           # itself handles the marker. `issue_comment` always runs opencode.yml
           # from the default branch, not from the PR base, so checking the PR base
           # would let a PR targeting another branch reach the privileged build
-          # agent before job `review` exists on main.
-          if ! gh api -X GET "repos/$GH_REPO/contents/.github/workflows/opencode.yml" \
-                 -f ref="$DEFAULT_BRANCH" --jq .content |
-               base64 -d |
-               grep 'opencode-auto-review' >/dev/null; then
-            echo "::notice::Base branch does not handle the auto-review marker yet; skipping the request."
+          # agent before job `review` exists on main. A failed API call is a hard
+          # error, not "no marker": a transient outage must not silence reviews.
+          if ! base_workflow="$(gh api -X GET \
+                 "repos/$GH_REPO/contents/.github/workflows/opencode.yml" \
+                 -f ref="$DEFAULT_BRANCH" --jq .content)"; then
+            echo "::error::Could not read the default branch opencode.yml; not posting the review trigger."
+            exit 1
+          fi
+          if ! printf '%s' "$base_workflow" | base64 -d | grep 'opencode-auto-review' >/dev/null; then
+            echo "::notice::Default branch does not handle the auto-review marker yet; skipping the request."
             exit 0
           fi
 

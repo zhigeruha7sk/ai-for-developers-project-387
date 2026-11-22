@@ -2,14 +2,15 @@
 
 ignores:
   # The issue_comment trigger is required for the /oc comment integration: the agent
-  # must start from a comment. Mitigations in the workflow: the job runs only for
-  # OWNER/MEMBER/COLLABORATOR comments (author_association gate), the token is the
-  # optional AGENT_PUSH_TOKEN (PAT with the workflow scope) or GITHUB_TOKEN limited to
-  # contents/issues/pull-requests writes, OPENCODE_API_KEY is the only model secret,
-  # only the default branch is checked out with persist-credentials: false.
+  # must start from a comment. Mitigations in the workflow: jobs run only for
+  # OWNER/MEMBER/COLLABORATOR comments (author_association gate); `review` gets a
+  # read-only ephemeral GITHUB_TOKEN (contents/PR/checks/statuses read, issues write
+  # only for its comment), `triage` gets contents read + issues write, and only the
+  # manual `opencode` job can write contents via AGENT_PUSH_TOKEN. OPENCODE_API_KEY is
+  # the only model secret; checkouts use persist-credentials: false.
   - rule: dangerous-triggers
     file: .github/workflows/opencode.yml
-    reason: required by the /oc comment integration; gated by author_association, token limited to repo/issue/PR writes (PAT with workflow scope when provided), single model-key secret
+    reason: required by the /oc comment integration; gated by author_association; review/triage use read-only or issue-scoped GITHUB_TOKEN; only manual opencode can write via AGENT_PUSH_TOKEN; single model-key secret
     expires: "2027-05-19"
 
   # pull_request_target is deliberate: with pull_request GitHub runs the workflow

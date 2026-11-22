@@ -61,8 +61,19 @@ jobs:
           git show "origin/${DEFAULT_BRANCH}:opencode.json" > "$RUNNER_TEMP/opencode-review.json"
           test -s "$RUNNER_TEMP/opencode-review.json"
           # Fail closed instead of letting the action fall back to the default
-          # build agent when the base branch has no `review` agent yet.
-          node -e 'const fs = require("fs"); const c = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if (!c.agent || !c.agent.review) { console.error("base opencode.json has no review agent"); process.exit(1); }' "$RUNNER_TEMP/opencode-review.json"
+          # build agent when the base branch has no `review` agent yet. Drop the
+          # MCP servers from the copy: the reviewer must not reach external tools.
+          node -e '
+            const fs = require("fs");
+            const path = process.argv[1];
+            const cfg = JSON.parse(fs.readFileSync(path, "utf8"));
+            if (!cfg.agent || !cfg.agent.review) {
+              console.error("base opencode.json has no review agent");
+              process.exit(1);
+            }
+            delete cfg.mcp;
+            fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + "\n");
+          ' "$RUNNER_TEMP/opencode-review.json"
 
       # Count earlier review triggers before the model is invoked. The request
       # workflow stops posting at the limit already, but a manual marker comment
