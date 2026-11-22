@@ -19,7 +19,10 @@ export default defineConfig({
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: FRONTEND_URL,
-    trace: 'retain-on-failure',
+    // В CI trace пишется всегда, включая успешный прогон: он вместе с SHA
+    // уходит в артефакт проверки, чтобы человек мог открыть подтверждение
+    // перед мержем. Локально trace нужен только при падении.
+    trace: process.env.CI ? 'on' : 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],

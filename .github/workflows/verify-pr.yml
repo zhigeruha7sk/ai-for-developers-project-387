@@ -88,22 +88,37 @@ jobs:
           # report and the artifact carry the same single SHA: the verified head.
           GITHUB_SHA="$PR_HEAD_SHA" mise run test:e2e
 
+      - name: Check the trace was recorded
+        id: trace
+        if: ${{ steps.e2e.outcome == 'success' }}
+        shell: bash
+        run: |
+          traces="$(find frontend/test-results -name trace.zip | wc -l)"
+          if [ "$traces" -eq 0 ]; then
+            echo "::error::The browser verification passed but recorded no Playwright trace."
+            exit 1
+          fi
+          echo "Recorded traces: $traces"
+
       - name: Record the verdict
         if: ${{ always() }}
         env:
           E2E_OUTCOME: ${{ steps.e2e.outcome }}
+          TRACE_OUTCOME: ${{ steps.trace.outcome }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          case "$E2E_OUTCOME" in
-            success) result="passed" ;;
-            *) result="failed" ;;
-          esac
+          if [ "$E2E_OUTCOME" = "success" ] && [ "$TRACE_OUTCOME" = "success" ]; then
+            result="passed"
+          else
+            result="failed"
+          fi
           head_sha="$(git rev-parse HEAD)"
           {
             printf 'pr=%s\n' "$PR_NUMBER"
             printf 'head_sha=%s\n' "$head_sha"
             printf 'result=%s\n' "$result"
             printf 'e2e_outcome=%s\n' "$E2E_OUTCOME"
+            printf 'trace_outcome=%s\n' "$TRACE_OUTCOME"
             printf 'run_url=%s/%s/actions/runs/%s\n' \
               "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
           } > verification/result.txt
