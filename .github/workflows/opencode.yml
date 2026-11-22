@@ -49,6 +49,9 @@ jobs:
           header=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
           git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $header"
 
+      # Automated triage comments carry this marker and must run the read-only
+      # `triage` agent, which cannot edit files, branch, commit or open PRs.
+      # Manual /oc and /opencode comments keep the normal (build) agent.
       - name: Run OpenCode
         uses: anomalyco/opencode/github@17b79f4e0c16dcff200b0417567ed22aeb2d7166 # github-v1.2.28
         env:
@@ -62,5 +65,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.AGENT_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
         with:
           model: opencode-go/deepseek-v4.1-flash
+          agent: ${{ contains(github.event.comment.body, '<!-- opencode-auto-triage -->') && 'triage' || '' }}
           share: 'false'
           use_github_token: true
