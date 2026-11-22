@@ -38,6 +38,15 @@ jobs:
             exit 1
           fi
 
+      # The guard script lives in the repository, and the runner starts with an
+      # empty workspace. Check out `main` so `.github/scripts/triage-guard.sh`
+      # exists before the live re-check runs.
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
       # The payload may be stale: a label such as `ready-for-agent` can be added
       # after `opened`. Re-read the live issue and stop with success, without
       # touching labels or comments, when triage is not wanted.
