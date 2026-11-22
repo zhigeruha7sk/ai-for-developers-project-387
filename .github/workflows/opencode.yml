@@ -49,7 +49,29 @@ jobs:
           header=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
           git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $header"
 
+      # Automated triage comments carry this marker and must run the read-only
+      # `triage` agent, which cannot edit files, branch, commit or open PRs.
+      - name: Run OpenCode (auto-triage)
+        if: contains(github.event.comment.body, '<!-- opencode-auto-triage -->')
+        uses: anomalyco/opencode/github@17b79f4e0c16dcff200b0417567ed22aeb2d7166 # github-v1.2.28
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          # AGENT_PUSH_TOKEN (PAT with the workflow scope) lets the agent edit
+          # .github/workflows files; without it the run falls back to GITHUB_TOKEN,
+          # which cannot touch workflow files.
+          # TOKEN is what `opencode github run` reads to authenticate git pushes.
+          TOKEN: ${{ secrets.AGENT_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.AGENT_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.AGENT_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
+        with:
+          model: opencode-go/deepseek-v4.1-flash
+          agent: triage
+          share: 'false'
+          use_github_token: true
+
+      # Manual /oc and /opencode comments keep using the normal (build) agent.
       - name: Run OpenCode
+        if: ${{ !contains(github.event.comment.body, '<!-- opencode-auto-triage -->') }}
         uses: anomalyco/opencode/github@17b79f4e0c16dcff200b0417567ed22aeb2d7166 # github-v1.2.28
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}

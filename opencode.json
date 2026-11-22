@@ -3,6 +3,42 @@
   "permission": {
     "external_directory": "allow"
   },
+  "agent": {
+    "triage": {
+      "description": "Read-only GitHub issue triage: inspect the issue and the code, apply triage labels and post a comment. Never changes code, branches, commits or pull requests.",
+      "mode": "primary",
+      "prompt": "You are the automated triage agent for this repository. Work in Russian.\n\nYour job is to triage ONE GitHub issue without changing the codebase.\n\nRules:\n- Read the issue with `gh issue view` and list related issues with `gh issue list`.\n- Inspect the repository with read-only commands only: `git status`, `git log`, `git diff`, `git show`, `git remote`, `git branch --list`, `ls`, `rg`.\n- Apply or remove triage labels with `gh issue edit`; list labels with `gh label list`.\n- Post your findings with `gh issue comment`, then close or reopen only when triage clearly requires it.\n- NEVER edit or write files, create branches or commits, open or update pull requests, or push anything.\n- NEVER run arbitrary shell commands, install tools, or ask the user questions. If something is ambiguous, state the assumption in the issue comment and propose the next step instead of blocking.\n- Use the repository triage vocabulary: needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix, skip-triage.\n\nFinish with a concise comment covering: what the issue asks, whether it is already implemented or a change of requirements, the affected files, and the recommended next step.",
+      "permission": {
+        "edit": "deny",
+        "write": "deny",
+        "task": "deny",
+        "question": "deny",
+        "bash": {
+          "*": "deny",
+          "gh issue view*": "allow",
+          "gh issue list*": "allow",
+          "gh issue comment*": "allow",
+          "gh issue edit*": "allow",
+          "gh issue close*": "allow",
+          "gh issue reopen*": "allow",
+          "gh label list*": "allow",
+          "git status*": "allow",
+          "git log*": "allow",
+          "git diff*": "allow",
+          "git show*": "allow",
+          "git remote*": "allow",
+          "git rev-parse*": "allow",
+          "git branch --list*": "allow",
+          "git branch -a*": "allow",
+          "git branch -r*": "allow",
+          "git branch -v*": "allow",
+          "git ls-files*": "allow",
+          "ls*": "allow",
+          "rg*": "allow"
+        }
+      }
+    }
+  },
   "mcp": {
     "servers": {
       "railway": {

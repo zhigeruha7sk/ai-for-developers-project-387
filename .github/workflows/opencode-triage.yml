@@ -1,0 +1,53 @@
+name: opencode-triage
+
+on:
+  issues:
+    types: [opened]
+
+permissions: {}
+
+concurrency:
+  group: opencode-triage-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    # Issues only (never PRs), never bots, and never issues that already carry a
+    # state where triage is not wanted.
+    if: |
+      !github.event.issue.pull_request &&
+      github.event.issue.user.type != 'Bot' &&
+      !contains(github.event.issue.labels.*.name, 'skip-triage') &&
+      !contains(github.event.issue.labels.*.name, 'needs-info') &&
+      !contains(github.event.issue.labels.*.name, 'ready-for-agent') &&
+      !contains(github.event.issue.labels.*.name, 'ready-for-human') &&
+      !contains(github.event.issue.labels.*.name, 'wontfix')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # No GITHUB_TOKEN scopes: every write below uses the PAT, because a comment
+    # authored by github-actions[bot] does not trigger opencode.yml.
+    permissions: {}
+    steps:
+      - name: Require AGENT_PUSH_TOKEN
+        env:
+          AGENT_PUSH_TOKEN: ${{ secrets.AGENT_PUSH_TOKEN }}
+        run: |
+          if [ -z "$AGENT_PUSH_TOKEN" ]; then
+            echo "::error::AGENT_PUSH_TOKEN is required to post the triage comment."
+            exit 1
+          fi
+
+      - name: Apply needs-triage label
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_PUSH_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: gh issue edit "$ISSUE_NUMBER" --add-label needs-triage
+
+      - name: Request triage through opencode
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_PUSH_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --body '/oc <!-- opencode-auto-triage --> Разбери новое обращение: проверь актуальность и дубли, при необходимости обнови метки и предложи следующий шаг. Код не меняй.'
