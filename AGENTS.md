@@ -105,3 +105,8 @@ Issues живут в GitHub Issues этого репозитория (через
 ### Domain docs
 
 Single-context: `GLOSSARY.md` + `docs/adr/` в корне репозитория. См. `docs/agents/domain.md`.
+
+### OpenCode run budget
+
+`.github/workflows/opencode.yml` разрешает не больше трёх запусков агента на один PR. Счётчик
+хранится в истории Actions, а не в комментарии. См. `docs/agents/opencode-budget.md`.

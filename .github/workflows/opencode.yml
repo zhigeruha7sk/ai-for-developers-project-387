@@ -8,22 +8,82 @@ on:
 
 permissions: {}
 
+# Each admitted /oc request on a pull request consumes one attempt from a fixed
+# budget. The counter is the Actions run history: every run and every re-run is
+# recorded by GitHub, the gate reads it with `actions: read`, and the report
+# comment below is informational only. A new PR number gets a new run title and
+# therefore a new budget; comments on plain issues are not limited. The limit
+# holds while the run history is retained and this workflow is unmodified; a
+# repository administrator can change either condition.
+run-name: ${{ (contains(github.event.comment.body, '/oc') || contains(github.event.comment.body, '/opencode')) && 'opencode-request' || 'opencode-idle' }} ${{ github.event.pull_request && 'pr' || (github.event.issue.pull_request && 'pr' || 'issue') }}-${{ github.event.issue.number || github.event.pull_request.number }}
+
 concurrency:
   group: opencode-${{ github.event.issue.number || github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
+env:
+  OPENCODE_PR_RUN_LIMIT: "3"
+
 jobs:
-  opencode:
+  budget:
+    # Only maintainers and only an explicit command can spend an attempt. The
+    # live Actions history is read here, before the model is called.
     if: |
+      github.event.comment.user.type != 'Bot' &&
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) &&
       (contains(github.event.comment.body, '/oc') ||
        contains(github.event.comment.body, '/opencode'))
     runs-on: ubuntu-latest
-    timeout-minutes: 1440
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      allowed: ${{ steps.budget.outputs.allowed }}
+      used: ${{ steps.budget.outputs.used }}
+      limit: ${{ steps.budget.outputs.limit }}
+      reason: ${{ steps.budget.outputs.reason }}
+      detail: ${{ steps.budget.outputs.detail }}
+      last_sha: ${{ steps.budget.outputs.last_sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The gate and the report must run the trusted script from the
+          # workflow's own commit, never a copy a pull request could change.
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Count admitted runs for this pull request
+        id: budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.pull_request && github.event.issue.number || github.event.pull_request.number }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          OPENCODE_PR_RUN_LIMIT: ${{ env.OPENCODE_PR_RUN_LIMIT }}
+        run: bash .github/scripts/opencode-budget.sh
+
+  opencode:
+    needs: budget
+    # After the budget is exhausted the model is never reached: this job is
+    # skipped and only the report job below runs.
+    if: needs.budget.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
     permissions:
       contents: write
       issues: write
       pull-requests: write
+      # The budget lives in the run history. The gate reads it with
+      # `actions: read`; the job never grants `actions: write` for that source.
+      actions: read
+    outputs:
+      reason: ${{ steps.classify.outputs.reason }}
+      detail: ${{ steps.classify.outputs.detail }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -49,10 +109,46 @@ jobs:
           header=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
           git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $header"
 
+      # A missing key or an unreachable installer is an infrastructure problem,
+      # not an agent failure. Detect it before the model can be called.
+      - name: Preflight the agent toolchain
+        id: preflight
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          missing=()
+          [ -n "$OPENCODE_API_KEY" ] || missing+=("OPENCODE_API_KEY")
+          command -v curl >/dev/null 2>&1 || missing+=("curl")
+          command -v jq >/dev/null 2>&1 || missing+=("jq")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            {
+              echo "reason=infra"
+              echo "detail=not ready: missing ${missing[*]}"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! curl -fsSL --max-time 30 -o /dev/null https://opencode.ai/install; then
+            {
+              echo "reason=infra"
+              echo "detail=cannot reach the opencode installer"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "reason=" >> "$GITHUB_OUTPUT"
+
+      - name: Record the agent start
+        if: steps.preflight.outcome == 'success' && steps.preflight.outputs.reason == ''
+        run: date +%s > "$RUNNER_TEMP/opencode-agent-start"
+
       # Automated triage comments carry this marker and must run the read-only
       # `triage` agent, which cannot edit files, branch, commit or open PRs.
       # Manual /oc and /opencode comments keep the normal (build) agent.
       - name: Run OpenCode
+        id: agent
+        if: steps.preflight.outcome == 'success' && steps.preflight.outputs.reason == ''
+        # Below the 360-minute job limit and the hosted-runner 6-hour cap, so a
+        # timeout fails the step first and the reporting steps still get time.
+        timeout-minutes: 345
         uses: anomalyco/opencode/github@17b79f4e0c16dcff200b0417567ed22aeb2d7166 # github-v1.2.28
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
@@ -68,3 +164,104 @@ jobs:
           agent: ${{ contains(github.event.comment.body, '<!-- opencode-auto-triage -->') && 'triage' || '' }}
           share: 'false'
           use_github_token: true
+
+      - name: Classify the agent outcome
+        id: classify
+        if: always()
+        env:
+          PREFLIGHT_OUTCOME: ${{ steps.preflight.outcome }}
+          PREFLIGHT_REASON: ${{ steps.preflight.outputs.reason }}
+          PREFLIGHT_DETAIL: ${{ steps.preflight.outputs.detail }}
+          AGENT_OUTCOME: ${{ steps.agent.outcome }}
+          AGENT_STEP_TIMEOUT_MINUTES: "345"
+        run: |
+          reason=""
+          detail=""
+          if [ -n "${PREFLIGHT_REASON:-}" ]; then
+            reason="infra"
+            detail="$PREFLIGHT_DETAIL"
+          elif [ "$PREFLIGHT_OUTCOME" != "success" ]; then
+            reason="infra"
+            detail="the toolchain preflight did not run successfully ($PREFLIGHT_OUTCOME)"
+          elif [ "$AGENT_OUTCOME" = "success" ]; then
+            reason=""
+            detail=""
+          elif [ "$AGENT_OUTCOME" = "skipped" ]; then
+            reason="infra"
+            detail="the agent did not start because a setup step failed"
+          elif [ ! -x "$HOME/.opencode/bin/opencode" ] ||
+            ! "$HOME/.opencode/bin/opencode" --version >/dev/null 2>&1; then
+            # The composite action installs the CLI into this directory. If it
+            # is absent or broken, preparation failed before the model started.
+            reason="infra"
+            detail="the opencode CLI is missing or does not start"
+          else
+            elapsed=0
+            if [ -f "$RUNNER_TEMP/opencode-agent-start" ]; then
+              elapsed=$(( $(date +%s) - $(cat "$RUNNER_TEMP/opencode-agent-start") ))
+            fi
+            timeout_seconds=$(( AGENT_STEP_TIMEOUT_MINUTES * 60 - 300 ))
+            if [ "$elapsed" -ge "$timeout_seconds" ]; then
+              reason="timeout"
+              detail="the agent invocation hit its ${AGENT_STEP_TIMEOUT_MINUTES}-minute timeout"
+            else
+              reason="agent_failed"
+              detail="the agent step ended with '$AGENT_OUTCOME'"
+            fi
+          fi
+          {
+            echo "reason=$reason"
+            echo "detail=$detail"
+          } >> "$GITHUB_OUTPUT"
+          if [ -n "$reason" ]; then
+            exit 1
+          fi
+
+  outcome:
+    # A separate job without the model. `needs` waits for the agent to stop, and
+    # `always()` lets the report run after a failure, a timeout or a denied gate.
+    needs: [budget, opencode]
+    if: |
+      always() &&
+      (needs.budget.result == 'success' || needs.budget.result == 'failure') &&
+      (
+        needs.budget.result == 'failure' ||
+        needs.budget.outputs.allowed == 'false' ||
+        needs.opencode.result == 'failure' ||
+        needs.opencode.result == 'cancelled' ||
+        needs.opencode.outputs.reason != ''
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The gate and the report must run the trusted script from the
+          # workflow's own commit, never a copy a pull request could change.
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Publish the report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          IS_PR: ${{ (github.event.issue.pull_request || github.event.pull_request) && 'true' || 'false' }}
+          BUDGET_RESULT: ${{ needs.budget.result }}
+          BUDGET_ALLOWED: ${{ needs.budget.outputs.allowed }}
+          BUDGET_REASON: ${{ needs.budget.outputs.reason }}
+          BUDGET_DETAIL: ${{ needs.budget.outputs.detail }}
+          BUDGET_USED: ${{ needs.budget.outputs.used }}
+          BUDGET_LIMIT: ${{ needs.budget.outputs.limit }}
+          BUDGET_LAST_SHA: ${{ needs.budget.outputs.last_sha }}
+          AGENT_RESULT: ${{ needs.opencode.result }}
+          AGENT_REASON: ${{ needs.opencode.outputs.reason }}
+          AGENT_DETAIL: ${{ needs.opencode.outputs.detail }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+        run: bash .github/scripts/opencode-report.sh
