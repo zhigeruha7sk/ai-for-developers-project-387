@@ -142,6 +142,8 @@
           "jq*": "allow",
           "mkdir*": "allow",
           "cat*": "allow",
+          "echo*": "allow",
+          "for*": "allow",
           "date*": "allow",
           "head*": "allow",
           "tail*": "allow",

@@ -23,6 +23,9 @@ env:
   # GitHub release asset digest for opencode-linux-x64.tar.gz.
   OPENCODE_VERSION: "1.19.6"
   OPENCODE_SHA256: "47734e08968b30cc22a0bffb6d9feeed76ad4aa743213a12122040392d09a057"
+  AUDIT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+  AUDIT_SHA: ${{ github.sha }}
+  AUDIT_REPOSITORY: ${{ github.repository }}
 
 jobs:
   audit:
@@ -110,9 +113,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
           APP_URL: ${{ vars.APP_URL }}
-          AUDIT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
-          AUDIT_SHA: ${{ github.sha }}
-          AUDIT_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           mkdir -p "$AUDIT_DIR/evidence"
@@ -167,5 +167,7 @@ jobs:
         with:
           name: app-audit-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ env.AUDIT_DIR }}/
+          # The report lives under the hidden .audit/ directory.
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 30
