@@ -30,7 +30,7 @@
 | `mise run check`                        | Все проверки: линтеры, типы, тесты                               |
 | `mise run lint`                         | Линтеры TypeSpec, Java (Spotless), фронтенда (ESLint + Prettier) |
 | `mise run typecheck`                    | Проверка типов фронтенда по сгенерированному SDK                 |
-| `mise run test`                         | Тесты бэкенда (JUnit), фронтенда (Vitest) и браузерный E2E       |
+| `mise run test`                         | Тесты бэкенда (JUnit), фронтенда (Vitest), E2E и guard автотриажа |
 | `mise run test:e2e`                     | Браузерный сценарий Playwright против настоящего сервера         |
 | `mise run api:gen`                      | Компилирует TypeSpec в OpenAPI                                   |
 | `mise run sdk:gen`                      | Генерирует TypeScript SDK из OpenAPI                             |
@@ -91,6 +91,7 @@
 - Не редактировать и не удалять `.github/workflows/hexlet-check.yml`.
 - Не переименовывать репозиторий.
 - Не коммитить `node_modules`, `backend/target`, `frontend/dist`, `frontend/src/api/generated`.
+- Критерии ревью PR — `REVIEW.md` в корне; авторевью и люди проверяют изменения по нему.
 
 ## Agent skills
 
@@ -105,3 +106,8 @@ Issues живут в GitHub Issues этого репозитория (через
 ### Domain docs
 
 Single-context: `GLOSSARY.md` + `docs/adr/` в корне репозитория. См. `docs/agents/domain.md`.
+
+### OpenCode run budget
+
+`.github/workflows/opencode.yml` разрешает не больше трёх запусков агента на один PR. Счётчик
+хранится в истории Actions, а не в комментарии. См. `docs/agents/opencode-budget.md`.

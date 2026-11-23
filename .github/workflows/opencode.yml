@@ -10,6 +10,22 @@ on:
 
 permissions: {}
 
+# Each admitted /oc request on a pull request consumes one attempt from a fixed
+# budget. The counter is the Actions run history: every run and every re-run is
+# recorded by GitHub, the gate reads it with `actions: read`, and the report
+# comment below is informational only. A new PR number gets a new run title and
+# therefore a new budget; comments on plain issues are not limited. The limit
+# holds while the run history is retained and this workflow is unmodified; a
+# repository administrator can change either condition.
+run-name: ${{ (contains(github.event.comment.body, '/oc') || contains(github.event.comment.body, '/opencode')) && 'opencode-request' || 'opencode-idle' }} ${{ github.event.pull_request && 'pr' || (github.event.issue.pull_request && 'pr' || 'issue') }}-${{ github.event.issue.number || github.event.pull_request.number }}
+
+concurrency:
+  group: opencode-${{ github.event.issue.number || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+env:
+  OPENCODE_PR_RUN_LIMIT: "3"
+
 jobs:
   review:
     # The trigger comment is posted by opencode-review.yml on pull_request_target.
@@ -33,16 +49,19 @@ jobs:
     # and the reviewer parses untrusted pull request text.
     permissions:
       contents: read
-      issues: read
-      pull-requests: write
+      # The action posts its review through the issues comments endpoint; every
+      # pull request is an issue. It cannot push or edit repository files, so it
+      # does not need pull-requests: write.
+      issues: write
+      pull-requests: read
       checks: read
       statuses: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Issue comments run from the default branch. Pin it explicitly so the
-          # guard script can never come from pull request code.
+          # Issue comments always run from the default branch. Pin it explicitly
+          # so the guard script below can never come from PR code.
           ref: ${{ github.event.repository.default_branch }}
           # Full history keeps `git show origin/<default>:REVIEW.md` and the merge
           # base available, so the criteria come from the base branch.
@@ -60,17 +79,27 @@ jobs:
           git show "origin/${DEFAULT_BRANCH}:opencode.json" > "$RUNNER_TEMP/opencode-review.json"
           test -s "$RUNNER_TEMP/opencode-review.json"
           # Fail closed instead of letting the action fall back to the default
-          # build agent when the base branch has no `review` agent yet.
-          node -e 'const fs = require("fs"); const c = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if (!c.agent || !c.agent.review) { console.error("base opencode.json has no review agent"); process.exit(1); }' "$RUNNER_TEMP/opencode-review.json"
+          # build agent when the base branch has no `review` agent yet. Drop the
+          # MCP servers from the copy: the reviewer must not reach external tools.
+          node -e '
+            const fs = require("fs");
+            const path = process.argv[1];
+            const cfg = JSON.parse(fs.readFileSync(path, "utf8"));
+            if (!cfg.agent || !cfg.agent.review) {
+              console.error("base opencode.json has no review agent");
+              process.exit(1);
+            }
+            delete cfg.mcp;
+            fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + "\n");
+          ' "$RUNNER_TEMP/opencode-review.json"
 
-      # Count the other review trigger comments before the model is invoked.
-      # The request workflow already stops posting at the limit, but a manual
-      # marker comment must not bypass it. The current comment is excluded so
-      # the third and last allowed request still runs.
-      # Read the guard from the base branch, like `Pin trusted reviewer config`,
-      # instead of the workspace, so a modified file in the PR branch can never
-      # be executed here. The job only runs on `issue_comment`, where the initial
-      # checkout is already the default branch; this is defense-in-depth.
+      # Count earlier review triggers before the model is invoked. The request
+      # workflow stops posting at the limit already, but a manual marker comment
+      # must not bypass it. The current comment is excluded so the last allowed
+      # request still runs. The guard is read from the base branch, like the
+      # pinned reviewer config, so a modified file in the PR branch can never be
+      # executed here; the job only runs on `issue_comment`, whose initial
+      # checkout is already the default branch, so this is defense-in-depth.
       - name: Check auto-review limit
         id: limit
         env:
@@ -148,12 +177,14 @@ jobs:
           share: 'false'
           use_github_token: true
 
-  opencode:
-    # Manual /oc and /opencode comments keep the normal (build) agent.
-    # Only issue_comment is a trigger; the explicit guard keeps the merge-commit
-    # ref of inline comments out of this job's workspace and token path.
+  budget:
+    # Only maintainers and only an explicit command can spend an attempt. The
+    # live Actions history is read here, before the model is called.
+    # Automated triage and review triggers also contain `/oc`, but they run
+    # their own dedicated jobs; excluding their markers keeps the build agent
+    # (and its PAT) out of those flows.
     if: |
-      github.event_name == 'issue_comment' &&
+      github.event.comment.user.type != 'Bot' &&
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) &&
       !contains(github.event.comment.body, 'This was generated by AI during automatic review') &&
       !contains(github.event.comment.body, '<!-- opencode-auto-review -->') &&
@@ -161,15 +192,60 @@ jobs:
       (contains(github.event.comment.body, '/oc') ||
        contains(github.event.comment.body, '/opencode'))
     runs-on: ubuntu-latest
-    timeout-minutes: 1440
-    # Manual runs stay serialized and are never cancelled.
-    concurrency:
-      group: opencode-${{ github.event.issue.number || github.event.pull_request.number || github.ref }}
-      cancel-in-progress: false
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      allowed: ${{ steps.budget.outputs.allowed }}
+      used: ${{ steps.budget.outputs.used }}
+      limit: ${{ steps.budget.outputs.limit }}
+      reason: ${{ steps.budget.outputs.reason }}
+      detail: ${{ steps.budget.outputs.detail }}
+      last_sha: ${{ steps.budget.outputs.last_sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The gate and the report must run the trusted script from the
+          # workflow's own commit, never a copy a pull request could change.
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Count admitted runs for this pull request
+        id: budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.pull_request && github.event.issue.number || github.event.pull_request.number }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          OPENCODE_PR_RUN_LIMIT: ${{ env.OPENCODE_PR_RUN_LIMIT }}
+        run: bash .github/scripts/opencode-budget.sh
+
+  opencode:
+    needs: budget
+    # After the budget is exhausted the model is never reached: this job is
+    # skipped and only the report job below runs. Only issue_comment is a
+    # trigger; the explicit guard keeps the merge-commit ref of inline comments
+    # out of this job's workspace and token path.
+    if: |
+      github.event_name == 'issue_comment' &&
+      needs.budget.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
     permissions:
       contents: write
       issues: write
       pull-requests: write
+      # The budget lives in the run history. The gate reads it with
+      # `actions: read`; the job never grants `actions: write` for that source.
+      actions: read
+    outputs:
+      reason: ${{ steps.classify.outputs.reason }}
+      detail: ${{ steps.classify.outputs.detail }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -184,9 +260,10 @@ jobs:
           git config --global user.name "opencode-agent[bot]"
           git config --global user.email "opencode-agent[bot]@users.noreply.github.com"
 
-      # The checkout runs with `persist-credentials: false`, so `git push` needs
-      # its own header. The action also configures git itself, but doing it here
-      # keeps pushes working for the full duration of the agent run.
+      # With `use_github_token: true` opencode does not configure git credentials
+      # itself, and the checkout runs with `persist-credentials: false`, so
+      # `git push` would fail with "could not read Username for 'https://github.com'".
+      # Set the same header opencode would set when it exchanges an app token.
       - name: Configure git credentials
         env:
           TOKEN: ${{ secrets.AGENT_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
@@ -194,7 +271,46 @@ jobs:
           header=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
           git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $header"
 
+      # A missing key or an unreachable installer is an infrastructure problem,
+      # not an agent failure. Detect it before the model can be called.
+      - name: Preflight the agent toolchain
+        id: preflight
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          missing=()
+          [ -n "$OPENCODE_API_KEY" ] || missing+=("OPENCODE_API_KEY")
+          command -v curl >/dev/null 2>&1 || missing+=("curl")
+          command -v jq >/dev/null 2>&1 || missing+=("jq")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            {
+              echo "reason=infra"
+              echo "detail=not ready: missing ${missing[*]}"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! curl -fsSL --max-time 30 -o /dev/null https://opencode.ai/install; then
+            {
+              echo "reason=infra"
+              echo "detail=cannot reach the opencode installer"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "reason=" >> "$GITHUB_OUTPUT"
+
+      - name: Record the agent start
+        if: steps.preflight.outcome == 'success' && steps.preflight.outputs.reason == ''
+        run: date +%s > "$RUNNER_TEMP/opencode-agent-start"
+
+      # Automated triage comments carry this marker and must run the read-only
+      # `triage` agent, which cannot edit files, branch, commit or open PRs.
+      # Manual /oc and /opencode comments keep the normal (build) agent.
       - name: Run OpenCode
+        id: agent
+        if: steps.preflight.outcome == 'success' && steps.preflight.outputs.reason == ''
+        # Below the 360-minute job limit and the hosted-runner 6-hour cap, so a
+        # timeout fails the step first and the reporting steps still get time.
+        timeout-minutes: 345
         uses: anomalyco/opencode/github@17b79f4e0c16dcff200b0417567ed22aeb2d7166 # github-v1.2.28
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
@@ -207,5 +323,107 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.AGENT_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
         with:
           model: opencode-go/deepseek-v4.1-flash
+          agent: ${{ contains(github.event.comment.body, '<!-- opencode-auto-triage -->') && 'triage' || '' }}
           share: 'false'
           use_github_token: true
+
+      - name: Classify the agent outcome
+        id: classify
+        if: always()
+        env:
+          PREFLIGHT_OUTCOME: ${{ steps.preflight.outcome }}
+          PREFLIGHT_REASON: ${{ steps.preflight.outputs.reason }}
+          PREFLIGHT_DETAIL: ${{ steps.preflight.outputs.detail }}
+          AGENT_OUTCOME: ${{ steps.agent.outcome }}
+          AGENT_STEP_TIMEOUT_MINUTES: "345"
+        run: |
+          reason=""
+          detail=""
+          if [ -n "${PREFLIGHT_REASON:-}" ]; then
+            reason="infra"
+            detail="$PREFLIGHT_DETAIL"
+          elif [ "$PREFLIGHT_OUTCOME" != "success" ]; then
+            reason="infra"
+            detail="the toolchain preflight did not run successfully ($PREFLIGHT_OUTCOME)"
+          elif [ "$AGENT_OUTCOME" = "success" ]; then
+            reason=""
+            detail=""
+          elif [ "$AGENT_OUTCOME" = "skipped" ]; then
+            reason="infra"
+            detail="the agent did not start because a setup step failed"
+          elif [ ! -x "$HOME/.opencode/bin/opencode" ] ||
+            ! "$HOME/.opencode/bin/opencode" --version >/dev/null 2>&1; then
+            # The composite action installs the CLI into this directory. If it
+            # is absent or broken, preparation failed before the model started.
+            reason="infra"
+            detail="the opencode CLI is missing or does not start"
+          else
+            elapsed=0
+            if [ -f "$RUNNER_TEMP/opencode-agent-start" ]; then
+              elapsed=$(( $(date +%s) - $(cat "$RUNNER_TEMP/opencode-agent-start") ))
+            fi
+            timeout_seconds=$(( AGENT_STEP_TIMEOUT_MINUTES * 60 - 300 ))
+            if [ "$elapsed" -ge "$timeout_seconds" ]; then
+              reason="timeout"
+              detail="the agent invocation hit its ${AGENT_STEP_TIMEOUT_MINUTES}-minute timeout"
+            else
+              reason="agent_failed"
+              detail="the agent step ended with '$AGENT_OUTCOME'"
+            fi
+          fi
+          {
+            echo "reason=$reason"
+            echo "detail=$detail"
+          } >> "$GITHUB_OUTPUT"
+          if [ -n "$reason" ]; then
+            exit 1
+          fi
+
+  outcome:
+    # A separate job without the model. `needs` waits for the agent to stop, and
+    # `always()` lets the report run after a failure, a timeout or a denied gate.
+    needs: [budget, opencode]
+    if: |
+      always() &&
+      (needs.budget.result == 'success' || needs.budget.result == 'failure') &&
+      (
+        needs.budget.result == 'failure' ||
+        needs.budget.outputs.allowed == 'false' ||
+        needs.opencode.result == 'failure' ||
+        needs.opencode.result == 'cancelled' ||
+        needs.opencode.outputs.reason != ''
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The gate and the report must run the trusted script from the
+          # workflow's own commit, never a copy a pull request could change.
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Publish the report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          IS_PR: ${{ (github.event.issue.pull_request || github.event.pull_request) && 'true' || 'false' }}
+          BUDGET_RESULT: ${{ needs.budget.result }}
+          BUDGET_ALLOWED: ${{ needs.budget.outputs.allowed }}
+          BUDGET_REASON: ${{ needs.budget.outputs.reason }}
+          BUDGET_DETAIL: ${{ needs.budget.outputs.detail }}
+          BUDGET_USED: ${{ needs.budget.outputs.used }}
+          BUDGET_LIMIT: ${{ needs.budget.outputs.limit }}
+          BUDGET_LAST_SHA: ${{ needs.budget.outputs.last_sha }}
+          AGENT_RESULT: ${{ needs.opencode.result }}
+          AGENT_REASON: ${{ needs.opencode.outputs.reason }}
+          AGENT_DETAIL: ${{ needs.opencode.outputs.detail }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+        run: bash .github/scripts/opencode-report.sh
