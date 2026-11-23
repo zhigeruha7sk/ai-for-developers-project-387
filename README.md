@@ -61,7 +61,8 @@ cd ai-for-developers-project-387
 | `jactionlint.yml`     | push в `main` и любой `pull_request`                                            | линт файлов GitHub Actions                |
 
 Секреты: `OPENCODE_API_KEY` — доступ к модели, `AGENT_PUSH_TOKEN` — PAT для записи меток,
-комментариев и пуша из агента, `HEXLET_ID` — идентификатор проекта Хекслета.
+комментариев и пуша из агента, а также для release-please (в настройках репозитория
+`GITHUB_TOKEN` не может создавать PR), `HEXLET_ID` — идентификатор проекта Хекслета.
 `AGENT_PUSH_TOKEN` должен иметь право `workflow`: без него агент не сможет изменить файлы
 в `.github/workflows/` (у `GITHUB_TOKEN` такого права нет).
 
@@ -72,9 +73,10 @@ cd ai-for-developers-project-387
 <details>
 <summary>Автоматические тесты Хекслета</summary>
 
-Тесты и линтер запускаются на каждый коммит файлом `.github/workflows/check.yml` — это та же
-команда `mise run check`, что и локально. Файл `.github/workflows/hexlet-check.yml` запускает
-проверку проекта Хекслетом; не удаляйте и не переименовывайте ни его, ни репозиторий.
+Тесты и линтер запускаются на каждый pull request и на push в `main` файлом
+`.github/workflows/check.yml` — это та же команда `mise run check`, что и локально.
+Файл `.github/workflows/hexlet-check.yml` запускает проверку проекта Хекслетом; не удаляйте
+и не переименовывайте ни его, ни репозиторий.
 
 </details>
 
