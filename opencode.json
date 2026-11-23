@@ -123,6 +123,38 @@
         "grep": "deny",
         "list": "deny"
       }
+    },
+    "audit": {
+      "description": "Scheduled read-only audit of the deployed application: checks public endpoints, writes a report and opens one deduplicated issue per new finding.",
+      "mode": "primary",
+      "permission": {
+        "edit": "deny",
+        "write": "allow",
+        "task": "deny",
+        "question": "deny",
+        "skill": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "external_directory": "deny",
+        "bash": {
+          "*": "deny",
+          "curl*": "allow",
+          "jq*": "allow",
+          "mkdir*": "allow",
+          "cat*": "allow",
+          "date*": "allow",
+          "head*": "allow",
+          "tail*": "allow",
+          "wc*": "allow",
+          "ls*": "allow",
+          "rg*": "allow",
+          "bash .github/scripts/audit-issue.sh*": "allow",
+          "./.github/scripts/audit-issue.sh*": "allow",
+          "gh issue list*": "allow",
+          "gh issue view*": "allow",
+          "gh label list*": "allow"
+        }
+      }
     }
   },
   "mcp": {

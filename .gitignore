@@ -13,6 +13,9 @@ mise.local.toml
 hk.local.pkl
 .vitest/
 
+# scheduled audit report and agent transcript (uploaded as an artifact)
+.audit/
+
 # browser test artifacts
 frontend/test-results/
 frontend/playwright-report/
