@@ -58,3 +58,17 @@ The same report job runs after the agent stops and publishes:
 If a reason does not match what the logs show, inspect the failing job log: an
 unknown cause is not guessed. The next action is chosen by a human; there is no
 automatic fix loop for this repository.
+
+## Verification
+
+`bash .github/scripts/opencode-budget.test.sh` runs the real gate with a stub
+`gh` and covers the decision matrix: the first attempt, the attempt exactly at
+the limit, an attempt over the limit (`limit_exhausted`), re-runs, queued and
+skipped runs, other pull requests, the excluded current run, and a custom limit.
+The task is part of `mise run test` (and therefore `mise run check`).
+
+For a live check, use a throwaway pull request and send `/oc` comments one at a
+time. The first three admitted requests invoke the model; the next request must
+skip the model and publish the report with the reason, the current PR head SHA
+and the run URL. The refused run is identifiable by `allowed=false` in the
+`budget` job and the report comment from the `outcome` job.
