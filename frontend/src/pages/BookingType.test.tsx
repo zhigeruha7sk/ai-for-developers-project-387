@@ -83,6 +83,7 @@ describe('страница выбора типа события', () => {
     renderBookingTypePage();
 
     expect(await screen.findByText('Типы встреч недоступны')).toBeInTheDocument();
+    expect(screen.getByText('Гость')).toBeInTheDocument();
   });
 
   it('после ошибки кнопка «Попробовать снова» повторяет загрузку', async () => {
