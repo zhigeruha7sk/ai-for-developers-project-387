@@ -19,7 +19,15 @@ permissions: {}
 # repository administrator can change either condition.
 # A command counts only at the start of the comment. Matching the substring
 # anywhere would let an agent report that quotes /oc start another run.
-run-name: ${{ (startsWith(github.event.comment.body, '/oc') || startsWith(github.event.comment.body, '/opencode')) && 'opencode-request' || 'opencode-idle' }} ${{ github.event.pull_request && 'pr' || (github.event.issue.pull_request && 'pr' || 'issue') }}-${{ github.event.issue.number || github.event.pull_request.number }}
+# Automatic review and triage triggers also start with /oc, but they run their
+# own jobs and must not spend the per-PR budget. Their run titles therefore stay
+# outside the `opencode-request pr-<n>` series counted by opencode-budget.sh.
+run-name: >-
+  ${{ (startsWith(github.event.comment.body, '/oc') || startsWith(github.event.comment.body, '/opencode')) &&
+      (contains(github.event.comment.body, '<!-- opencode-auto-review -->') && 'opencode-review' ||
+       contains(github.event.comment.body, '<!-- opencode-auto-triage -->') && 'opencode-triage' ||
+       'opencode-request') || 'opencode-idle' }}
+  ${{ github.event.issue.pull_request && 'pr' || (github.event.pull_request && 'pr' || 'issue') }}-${{ github.event.issue.number || github.event.pull_request.number }}
 
 concurrency:
   group: opencode-${{ github.event.issue.number || github.event.pull_request.number || github.ref }}
@@ -191,8 +199,9 @@ jobs:
     # Only maintainers and only an explicit command can spend an attempt. The
     # live Actions history is read here, before the model is called.
     # Automated triage and review triggers also contain `/oc`, but they run
-    # their own dedicated jobs; excluding their markers keeps the build agent
-    # (and its PAT) out of those flows.
+    # their own dedicated jobs and have separate run titles; excluding their
+    # markers keeps the build agent (and its PAT) out of those flows and keeps
+    # the per-PR budget for manual requests.
     if: |
       github.event.comment.user.type != 'Bot' &&
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) &&

@@ -21,8 +21,10 @@ plain issues are not limited by this budget.
 
 The counter is the **Actions run history**, not a file, label or comment:
 
-- `run-name` stamps each command run as `opencode-request pr-<number>` and each
-  non-command run as `opencode-idle ...`;
+- `run-name` stamps each manual command run as `opencode-request pr-<number>`,
+  automatic review/triage triggers as `opencode-review pr-<number>` /
+  `opencode-triage pr-<number>`, and non-command comments as `opencode-idle ...`;
+  only the `opencode-request` series is counted;
 - the gate sums `run_attempt` over the earlier completed command runs with that
   title, plus its own `github.run_attempt`;
 - queued runs are ignored because they have not been admitted yet, and skipped

@@ -117,6 +117,12 @@ expect "skipped runs are not charged" "true" "1" "" \
 expect "other pull requests are not charged" "true" "1" "" \
   "$(runs_json "$(run 90 5 completed success 'opencode-request pr-99')")"
 
+expect "review runs are not charged" "true" "1" "" \
+  "$(runs_json "$(run 90 5 completed success 'opencode-review pr-42')")"
+
+expect "triage runs are not charged" "true" "1" "" \
+  "$(runs_json "$(run 90 5 completed success 'opencode-triage pr-42')")"
+
 expect "current run id is excluded" "true" "2" "" \
   "$(runs_json "$(run 100 3)")" 2
 

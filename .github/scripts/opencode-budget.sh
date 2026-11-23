@@ -23,9 +23,9 @@ limit="${OPENCODE_PR_RUN_LIMIT:-3}"
 pr_number="${PR_NUMBER:-}"
 workflow_file="opencode.yml"
 
-# Titles are set by `run-name` in .github/workflows/opencode.yml. Only runs that
-# carried a command are counted; a plain comment gets the `opencode-idle` title
-# and never reaches this script, but the title check keeps old runs out too.
+# Titles are set by `run-name` in .github/workflows/opencode.yml. Only manual
+# command runs are counted; plain comments get `opencode-idle`, and automatic
+# review/triage triggers get their own titles, so neither spends this budget.
 expected_title="opencode-request pr-${pr_number}"
 
 output() {
