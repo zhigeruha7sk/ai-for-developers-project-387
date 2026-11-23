@@ -84,7 +84,12 @@ async function selectFirstFreeSlot(page: Page): Promise<string> {
   return range.split(/\s*–\s*/)[0];
 }
 
-async function confirmBooking(page: Page): Promise<void> {
+async function enterGuestName(page: Page, name: string): Promise<void> {
+  await page.getByLabel('Имя гостя').fill(name);
+}
+
+async function confirmBooking(page: Page, name: string): Promise<void> {
+  await enterGuestName(page, name);
   await page.getByRole('button', { name: 'Продолжить' }).click();
   await expect(page.locator('.success-modal')).toContainText('Вы успешно записаны');
 }
@@ -98,14 +103,16 @@ test('гость проходит путь от выбора типа до по�
 
   await selectDate(page, date);
   const startTime = await selectFirstFreeSlot(page);
-  await confirmBooking(page);
+  const guestName = 'Иван E2E';
+  await confirmBooking(page, guestName);
 
-  // Владелец видит предстоящую встречу в админке.
+  // Владелец видит предстоящую встречу и введённое имя гостя в админке.
   await page.goto('/admin');
   await expect(page.locator('.admin-table')).toBeVisible();
   const row = page.locator('.admin-table tbody tr', { hasText: date.iso });
   await expect(row).toContainText(startTime);
   await expect(row).toContainText(MEETING_30.name);
+  await expect(row).toContainText(guestName);
 });
 
 test('при конфликте гость видит понятное сообщение о занятом слоте', async ({ context }) => {
@@ -123,8 +130,9 @@ test('при конфликте гость видит понятное сооб�
   const secondSlot = await selectFirstFreeSlot(secondGuest);
   expect(secondSlot).toBe(firstSlot);
 
-  await confirmBooking(firstGuest);
+  await confirmBooking(firstGuest, 'Гость Первый');
 
+  await enterGuestName(secondGuest, 'Гость Второй');
   await secondGuest.getByRole('button', { name: 'Продолжить' }).click();
   await expect(secondGuest.locator('.hint-error')).toHaveText(
     'Это время уже занято. Выберите другой слот.',
@@ -140,7 +148,7 @@ test('занятый слот не предлагается как свобод�
   await openBooking(page, MEETING_30.id);
   await selectDate(page, date);
   const startTime = await selectFirstFreeSlot(page);
-  await confirmBooking(page);
+  await confirmBooking(page, 'Гость Занятый');
 
   // После записи слот того же типа помечен занятым и недоступен для клика.
   await openBooking(page, MEETING_30.id);

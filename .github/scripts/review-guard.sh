@@ -32,16 +32,27 @@ if [[ ! "$max" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
+# Issue comments and pull request review comments are separate endpoints.
+# opencode.yml no longer listens to pull_request_review_comment, so this is
+# defense-in-depth: if an inline marker comment exists from an older run it
+# still counts, and counting both endpoints keeps the limit correct if the
+# inline trigger is ever re-enabled.
+#
 # Count only maintainers' triggers: otherwise any outsider could exhaust the
 # limit with marker comments and silently disable automatic review.
-count="$(gh api --paginate --slurp "repos/$GH_REPO/issues/$pr/comments" \
-  | jq --arg marker '<!-- opencode-auto-review -->' --argjson excluded "$exclude" \
-    '[.[][]
-      | select((.body // "") | contains($marker))
-      | select(.id != $excluded)
-      | select((.author_association // "") as $a
-          | ["OWNER", "MEMBER", "COLLABORATOR"] | index($a) != null)]
-     | length')"
+count="$(
+  {
+    gh api --paginate "repos/$GH_REPO/issues/$pr/comments"
+    gh api --paginate "repos/$GH_REPO/pulls/$pr/comments"
+  } | jq -s --arg marker '<!-- opencode-auto-review -->' --argjson excluded "$exclude" '
+    add
+    | map(select((.body // "") | contains($marker)))
+    | map(select(.id != $excluded))
+    | map(select((.author_association // "") as $a
+        | ["OWNER", "MEMBER", "COLLABORATOR"] | index($a) != null))
+    | length
+  '
+)"
 
 if [ "$count" -ge "$max" ]; then
   echo "skip: auto-review limit $max reached ($count earlier request(s))"
