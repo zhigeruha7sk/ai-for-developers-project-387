@@ -1,0 +1,47 @@
+name: check
+
+# The same command developers run locally: lint, typecheck and every test suite,
+# including the browser scenario against the real backend. `verify-pr` stays a
+# separate job because it must prove the exact pull request head and publish the
+# trace artifact; this workflow is the ordinary CI gate on every push and PR.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install mise toolchain
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3.6.3
+        env:
+          # Dependencies are installed in the next step, once and explicitly,
+          # instead of by the mise.toml postinstall hook.
+          MISE_NO_HOOKS: "1"
+        with:
+          install: true
+          cache: true
+
+      - name: Install project dependencies
+        run: mise run install
+
+      - name: Install browser system dependencies
+        run: npm --prefix frontend exec playwright install --with-deps chromium
+
+      - name: Run every check
+        run: mise run check
