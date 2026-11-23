@@ -3,7 +3,8 @@ name: check
 # The same command developers run locally: lint, typecheck and every test suite,
 # including the browser scenario against the real backend. `verify-pr` stays a
 # separate job because it must prove the exact pull request head and publish the
-# trace artifact; this workflow is the ordinary CI gate on every push and PR.
+# trace artifact; this workflow is the ordinary CI gate on pushes to main and
+# on every pull request.
 on:
   push:
     branches: [main]
@@ -45,3 +46,10 @@ jobs:
 
       - name: Run every check
         run: mise run check
+
+      # `mise run check` regenerates the contract; a committed OpenAPI file
+      # that differs from api/main.tsp must fail CI, as AGENTS.md promises.
+      - name: Check the committed OpenAPI contract
+        run: |
+          mise run api:gen
+          git diff --exit-code -- api/openapi/openapi.yaml
