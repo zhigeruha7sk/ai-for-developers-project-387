@@ -48,17 +48,24 @@ cd ai-for-developers-project-387
 Все автоматизации лежат в `.github/workflows/`. Файл `hexlet-check.yml` сгенерирован Хекслетом:
 его нельзя редактировать, удалять или переименовывать репозиторий.
 
-| Файл                        | Триггер                                              | Назначение                                     |
-| --------------------------- | ---------------------------------------------------- | ---------------------------------------------- |
-| `hexlet-check.yml`          | push в любую ветку и теги                             | проверка проекта Хекслетом                     |
-| `opencode.yml`              | комментарий с `/oc` или `/opencode` в issue/обсуждении PR | запуск агента OpenCode                     |
-| `opencode-triage.yml`       | `issues: opened`                                      | автотриаж нового issue                         |
-| `jactionlint.yml`           | push в `main` и любой `pull_request`                  | линт файлов GitHub Actions                     |
+| Файл                  | Триггер                                                                        | Назначение                                 |
+| --------------------- | ------------------------------------------------------------------------------ | ------------------------------------------ |
+| `hexlet-check.yml`    | push в любую ветку и теги                                                       | проверка проекта Хекслетом                |
+| `opencode.yml`        | комментарий, начинающийся с `/oc` или `/opencode`, в issue/обсуждении PR        | запуск агента OpenCode                    |
+| `opencode-triage.yml` | `issues: opened`                                                                | автотриаж нового issue                    |
+| `opencode-review.yml` | `pull_request_target`: opened, synchronize, reopened, ready_for_review, edited   | заявка на авторевью PR                    |
+| `app-audit.yml`       | `schedule` и `workflow_dispatch`                                                | плановый аудит приложения                 |
+| `verify-pr.yml`       | `pull_request`: opened, synchronize, reopened, ready_for_review                 | проверка head PR и браузерный артефакт    |
+| `jactionlint.yml`     | push в `main` и любой `pull_request`                                            | линт файлов GitHub Actions                |
 
 Секреты: `OPENCODE_API_KEY` — доступ к модели, `AGENT_PUSH_TOKEN` — PAT для записи меток,
 комментариев и пуша из агента, `HEXLET_ID` — идентификатор проекта Хекслета.
 `AGENT_PUSH_TOKEN` должен иметь право `workflow`: без него агент не сможет изменить файлы
 в `.github/workflows/` (у `GITHUB_TOKEN` такого права нет).
+
+Все сценарии агента (`opencode`, `opencode-triage`, `opencode-review`, `app-audit`)
+используют модель `opencode-go/deepseek-v4.1-flash`; ключ модели хранится только в секрете
+`OPENCODE_API_KEY`.
 
 <details>
 <summary>Автоматические тесты Хекслета</summary>
@@ -71,23 +78,37 @@ cd ai-for-developers-project-387
 <summary>Интеграция OpenCode: агент по команде в комментарии</summary>
 
 Файл `.github/workflows/opencode.yml` запускает агента OpenCode по команде `/oc` или `/opencode`
-в комментарии к issue или к обсуждению PR (событие `issue_comment`; inline-комментарии к строке
-кода намеренно не подключены, потому что они чекаутят merge-коммит PR). Описание и ответ агента
-появляются тем же комментарием в ветке обсуждения.
+в начале комментария к issue или к обсуждению PR (событие `issue_comment`; inline-комментарии к
+строке кода намеренно не подключены, потому что они чекаутят merge-коммит PR). Описание и ответ
+агента появляются тем же комментарием в ветке обсуждения.
 
+- **Почему не GitHub App**: агентские job не используют GitHub App и OIDC. Вместо этого
+  настроен тот же сценарий на действии `anomalyco/opencode/github` с
+  `use_github_token: true`: модель авторизуется ключом `OPENCODE_API_KEY`, а git-запись и
+  комментарии — через PAT `AGENT_PUSH_TOKEN`. PAT нужен, чтобы агент мог править
+  `.github/workflows/` (у `GITHUB_TOKEN` нет права `workflow`) и чтобы комментарий от
+  владельца PAT запускал `opencode.yml`: комментарий от `github-actions[bot]` новый запуск не
+  стартует. Поэтому `id-token: write` не задаётся.
+- **Скиллы и настройки issue**: checkout по умолчанию забирает из `main` каталоги
+  `.agents/skills` и `docs/agents` вместе с `AGENTS.md`, поэтому на свежем раннере доступны
+  скиллы первого проекта и настройки GitHub Issues; отдельная установка не нужна.
 - **Кто может запустить**: только участники с ролями OWNER, MEMBER, COLLABORATOR —
   комментарий чужого автора джобу не запускает. Проверка выполняется в job-level `if` по
-  `author_association`; действие `opencode/github` свою проверку прав пропускает, когда ему
-  передан `TOKEN`.
+  `author_association` и `comment.user.type != 'Bot'`; действие `opencode/github` свою
+  проверку прав пропускает, когда ему передан `TOKEN`.
+- **Команды**: распознаются только `/oc` и `/opencode` в начале комментария (`startsWith`),
+  а не любое упоминание в тексте. Набор закреплён в `mentions: '/oc,/opencode'` у действия;
+  цитата команды в середине отчёта больше не создаёт лишний запуск.
 - **Модель и ключ**: `opencode-go/deepseek-v4.1-flash` (провайдер OpenCode Go), ключ берётся из секрета
   `OPENCODE_API_KEY` (значение хранится в настройках репозитория и в код не попадает).
 - **Приватность**: публикация сессии на opencode.ai отключена явно (`share: 'false'`).
-- **Безопасность**: у ручной job `opencode` только `contents: write`, `issues: write` и
-  `pull-requests: write`; у `review` — `contents: read`, `issues: write` (комментарий
-  публикуется через issues-эндпоинт, `pull-requests: write` не нужен),
-  `pull-requests: read` (для `gh pr view/diff/checks`), `checks: read`,
-  `statuses: read`; у `triage` — `contents: read`, `issues: write`. Чекаут — с
-  `persist-credentials: false`. Ручные запуски по одной задаче
+- **Безопасность**: у ручной job `opencode` — `contents: write`, `issues: write` и
+  `pull-requests: write`; у `review` — `contents: read`, `issues: write`,
+  `pull-requests: write` (action ставит реакцию на комментарий и публикует review в PR;
+  с `pull-requests: read` живой прогон падал с `403 Resource not accessible by integration`),
+  `checks: read`, `statuses: read`; у `triage` — `contents: read`, `issues: write`.
+  Агент `review` остаётся read-only за счёт `opencode.json`, а не за счёт урезанного
+  `GITHUB_TOKEN`. Чекаут — с `persist-credentials: false`. Ручные запуски по одной задаче
   выполняются по очереди; авторевью имеет отдельную группу и отменяет устаревший запуск при
   новом коммите.
 - **Токены**: сам агент авторизуется через `OPENCODE_API_KEY`, а git-пуш и обращения к GitHub —
@@ -105,6 +126,20 @@ cd ai-for-developers-project-387
 - **Автотриаж и авторевью**: комментарий с маркером автотриажа запускает отдельного агента
   `triage`, с маркером авторевью — агента `review`; ручные `/oc` и `/opencode` по-прежнему
   используют обычного агента.
+- **Результаты**: ответ на `/oc` в issue #3 — прогоны
+  [44995265029](https://github.com/zhigeruha7sk/ai-for-developers-project-387/actions/runs/44995265029)
+  (проверка модели) и
+  [45108165652](https://github.com/zhigeruha7sk/ai-for-developers-project-387/actions/runs/45108165652)
+  (последний успешный ручной прогон, `issue_comment`, ветка `main`); автотриаж —
+  [45015319126](https://github.com/zhigeruha7sk/ai-for-developers-project-387/actions/runs/45015319126)
+  и
+  [45015274526](https://github.com/zhigeruha7sk/ai-for-developers-project-387/actions/runs/45015274526).
+  Авторевью: запрос
+  [45107660640](https://github.com/zhigeruha7sk/ai-for-developers-project-387/actions/runs/45107660640)
+  сработал, но job `review`
+  [45107672514](https://github.com/zhigeruha7sk/ai-for-developers-project-387/actions/runs/45107672514)
+  упал на 403 из-за `pull-requests: read`. В текущем workflow добавлен `pull-requests: write`;
+  после мержа нужен повторный живой прогон, чтобы зафиксировать успешный результат.
 - **Линт workflow-файлов**: `.github/workflows/jactionlint.yml` проверяет файлы Actions
   через закреплённый `jdx/jactionlint` v2.6.0 на push в `main` и на каждый pull request;
   та же проверка входит в `mise run check`.
@@ -223,20 +258,19 @@ cd ai-for-developers-project-387
   дисклеймера. Как только
   файл появляется в базовой ветке, версия из PR не используется. Разбор идёт по двум осям:
   спецификация (`docs/spec.md`, issue, ADR) и стандарты (`AGENTS.md`, `REVIEW.md`).
-- **До мержа**: пока `opencode-review.yml` есть только в ветке PR, авторевью не
-  запустится: `pull_request_target` берёт workflow из базовой ветки. Job запроса
-  дополнительно проверяет, что базовый `opencode.yml` уже умеет обрабатывать маркер, и
-  иначе ничего не публикует. Поэтому после мержа сначала включается job `review`, а
-  триггеры начинают работать только со следующего PR. В этом PR job `review` ни разу не
-  запускался в Actions: независимый разбор коммита `69e191c` получен локальным запуском
-  `opencode run --agent review` и приложен комментарием; живой прогон job нужен после
-  мержа.
+- **Живой прогон**: после мержа job `review` запустился на PR #17
+  ([45107672514](https://github.com/zhigeruha7sk/ai-for-developers-project-387/actions/runs/45107672514))
+  и упал: action не смог поставить реакцию на комментарий и опубликовать review —
+  `403 Resource not accessible by integration` при `pull-requests: read`. В текущем workflow
+  для job `review` добавлен `pull-requests: write`; сам агент остаётся read-only через
+  `opencode.json`. После мержа нужен повторный живой прогон, чтобы зафиксировать успешный
+  результат в Actions.
 - **Формат**: первая строка `> *This was generated by AI during automatic review.*`, затем
   итог, находки с severity, `file:line` и пунктом `REVIEW.md`, отдельно «Проверено» и
   «Не проверено».
 - **Права и ограничения**: у job запроса `permissions: {}` и запись только через PAT;
   тайм-аут 5 минут. Job `review` получает `contents: read`, `issues: write`,
-  `pull-requests: read`, `checks: read`, `statuses: read` и эфемерный `GITHUB_TOKEN`, а не
+  `pull-requests: write`, `checks: read`, `statuses: read` и эфемерный `GITHUB_TOKEN`, а не
   `AGENT_PUSH_TOKEN`;
   PAT в `.git/config` ревьюера не попадает. Агент `review` в `opencode.json` работает
   только на чтение: `edit`/`write`, встроенные `read`, `glob`, `grep` и `list`,

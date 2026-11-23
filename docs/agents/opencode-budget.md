@@ -7,10 +7,12 @@ called for one pull request. The default is **three** admitted runs; change
 ## What counts
 
 Every admitted `/oc` or `/opencode` request by an owner, member or collaborator
-in that pull request consumes one attempt, whether it arrives as a general PR
-comment or as an inline review comment. A cancelled run, a timeout and a
-`Re-run` attempt from the Actions UI all consume an attempt as well: a re-run
-increments `run_attempt` on the same workflow run.
+in that pull request consumes one attempt. Within a pull request, only
+conversation comments (`issue_comment`) are counted; inline review comments are
+deliberately not a trigger. The command must start the comment (`startsWith`), so
+quoting a command later in the body does not start a run. A cancelled run, a
+timeout and a `Re-run` attempt from the Actions UI all consume an attempt as
+well: a re-run increments `run_attempt` on the same workflow run.
 
 A new pull request has a new title, so it starts with a new budget. Comments on
 plain issues are not limited by this budget.
