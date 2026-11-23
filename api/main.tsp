@@ -17,6 +17,21 @@ model HealthResponse {
   status: HealthStatus;
 }
 
+/** Сборка приложения. */
+model VersionResponse {
+  /** Полный SHA коммита, из которого собрано приложение, или `unknown`. */
+  commit: string;
+
+  /** Короткий SHA коммита или `unknown`. */
+  commitShort: string;
+
+  /** Ветка, из которой собрана сборка, или `unknown`. */
+  branch: string;
+
+  /** Время сборки в формате ISO 8601 (UTC) или `unknown`. */
+  builtAt: string;
+}
+
 /** Тело ошибки в формате RFC 7807. */
 model ProblemDetail {
   /** URI типа ошибки. */
@@ -149,6 +164,11 @@ namespace Api {
   @get
   @route("/health")
   op health(): HealthResponse;
+
+  @summary("Версия сборки приложения")
+  @get
+  @route("/version")
+  op version(): VersionResponse;
 
   @summary("Список типов встреч")
   @get

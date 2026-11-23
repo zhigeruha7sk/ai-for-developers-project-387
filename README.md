@@ -16,6 +16,7 @@
 - Гость: <https://calendar-production-2a3ad289.up.railway.app/booking>
 - Админка владельца: <https://calendar-production-2a3ad289.up.railway.app/admin>
 - Проверка сервиса: <https://calendar-production-2a3ad289.up.railway.app/api/health>
+- Версия сборки: <https://calendar-production-2a3ad289.up.railway.app/api/version>
 
 Ссылка ведёт на тот же сервис, который собирается из `Dockerfile`: Spring Boot отдаёт и API, и
 собранный фронтенд.
