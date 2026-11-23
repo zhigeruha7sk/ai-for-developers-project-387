@@ -90,11 +90,24 @@ run = "bash .github/scripts/opencode-budget.test.sh"
 
 [tasks.test]
 description = "Run every test suite"
-depends = ["backend:test", "frontend:test", "test:e2e", "guard:test", "budget:test"]
+# Sequential on purpose: the browser scenario starts a real backend with
+# `mvn spring-boot:run`, and running it in parallel with `backend:test` lets
+# both processes write to backend/target at the same time.
+run = [
+  "mise run backend:test",
+  "mise run frontend:test",
+  "mise run guard:test",
+  "mise run budget:test",
+  "mise run test:e2e",
+]
 
 [tasks.check]
 description = "Run every check used locally and in CI"
-depends = ["lint", "typecheck", "test"]
+run = [
+  "mise run lint",
+  "mise run typecheck",
+  "mise run test",
+]
 
 [tasks.build]
 description = "Build backend and frontend artifacts"
