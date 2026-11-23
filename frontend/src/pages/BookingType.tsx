@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiListMeetingTypes } from '../api/generated';
 import type { MeetingType } from '../api/generated';
+import { useGuest } from '../context/GuestContext';
 
 export default function BookingTypePage() {
   const [meetingTypes, setMeetingTypes] = useState<MeetingType[]>([]);
   const [state, setState] = useState<'loading' | 'ready' | 'missing'>('loading');
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { guest } = useGuest();
 
   const load = useCallback(async () => {
     setState('loading');
@@ -58,6 +60,13 @@ export default function BookingTypePage() {
 
   return (
     <div className="types-page">
+      <span className="guest-badge">
+        <span className="avatar" aria-hidden="true">
+          {guest.avatar}
+        </span>
+        <span className="guest-role">Гость</span>
+      </span>
+
       <h1 className="page-heading">Выберите тип события</h1>
 
       <ul className="meeting-types">
