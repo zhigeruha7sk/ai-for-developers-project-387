@@ -78,12 +78,19 @@ depends = ["sdk:gen"]
 run = "npm --prefix frontend run test:e2e"
 
 [tasks."guard:test"]
-description = "Test the automatic triage guard decision matrix"
-run = "bash .github/scripts/triage-guard.test.sh"
+description = "Test the automatic triage and review guard decision matrices"
+run = [
+  "bash .github/scripts/triage-guard.test.sh",
+  "bash .github/scripts/review-guard.test.sh",
+]
+
+[tasks."budget:test"]
+description = "Test the per-PR OpenCode run budget gate"
+run = "bash .github/scripts/opencode-budget.test.sh"
 
 [tasks.test]
 description = "Run every test suite"
-depends = ["backend:test", "frontend:test", "test:e2e", "guard:test"]
+depends = ["backend:test", "frontend:test", "test:e2e", "guard:test", "budget:test"]
 
 [tasks.check]
 description = "Run every check used locally and in CI"
