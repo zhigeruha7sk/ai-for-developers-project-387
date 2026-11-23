@@ -123,5 +123,47 @@ expect "current run id is excluded" "true" "2" "" \
 expect "custom limit is enforced" "false" "2" "limit_exhausted" \
   "$(runs_json "$(run 90 1)")" 1 1
 
+expect_infra() {
+  local name="$1" pr_error="$2" runs_error="$3"
+  local outfile="$tmp/out" status=0
+
+  cases=$((cases + 1))
+  : >"$outfile"
+  printf '%s' "$(runs_json)" >"$tmp/runs.json"
+
+  PATH="$tmp/bin:$PATH" \
+    GH_REPO="owner/repo" \
+    GH_TOKEN="test-token" \
+    PR_NUMBER="42" \
+    RUN_ID="100" \
+    RUN_ATTEMPT="1" \
+    OPENCODE_PR_RUN_LIMIT="3" \
+    FAKE_SHA="abc123" \
+    FAKE_RUNS="$tmp/runs.json" \
+    FAKE_PR_ERROR="$pr_error" \
+    FAKE_RUNS_ERROR="$runs_error" \
+    GITHUB_OUTPUT="$outfile" \
+    bash "$gate" >/dev/null 2>"$tmp/stderr" || status=$?
+
+  local got_allowed got_reason
+  got_allowed="$(sed -n 's/^allowed=//p' "$outfile")"
+  got_reason="$(sed -n 's/^reason=//p' "$outfile")"
+
+  if [ "$status" -ne 1 ]; then
+    printf 'FAIL %s: expected exit 1, got %s\n' "$name" "$status" >&2
+    sed 's/^/    /' "$tmp/stderr" >&2
+    failures=$((failures + 1))
+  elif [ "$got_allowed" != "false" ] || [ "$got_reason" != "infra" ]; then
+    printf 'FAIL %s: expected allowed=false reason=infra, got allowed=%s reason=%s\n' \
+      "$name" "$got_allowed" "$got_reason" >&2
+    failures=$((failures + 1))
+  else
+    printf 'ok   %s\n' "$name"
+  fi
+}
+
+expect_infra "cannot read the pull request" 1 0
+expect_infra "cannot read the run history" 0 1
+
 printf '\n%s case(s), %s failure(s)\n' "$cases" "$failures"
 [ "$failures" -eq 0 ]
