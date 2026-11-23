@@ -36,10 +36,24 @@ function renderBookingTypePage() {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   vi.clearAllMocks();
 });
 
 describe('страница выбора типа события', () => {
+  it('показывает бейдж гостя с аватаром и без имени', async () => {
+    localStorage.setItem('calendar-guest', JSON.stringify({ name: 'Айгуль', avatar: '🦉' }));
+    vi.mocked(apiListMeetingTypes).mockResolvedValue({ data: meetingTypes, error: undefined });
+
+    renderBookingTypePage();
+
+    const role = await screen.findByText('Гость');
+    const badge = role.closest('.guest-badge');
+    expect(badge).not.toBeNull();
+    expect(badge).toHaveTextContent('🦉');
+    expect(screen.queryByText('Айгуль')).not.toBeInTheDocument();
+  });
+
   it('загружает типы через SDK и ведёт гостя к календарю', async () => {
     vi.mocked(apiListMeetingTypes).mockResolvedValue({ data: meetingTypes, error: undefined });
 
@@ -69,6 +83,7 @@ describe('страница выбора типа события', () => {
     renderBookingTypePage();
 
     expect(await screen.findByText('Типы встреч недоступны')).toBeInTheDocument();
+    expect(screen.getByText('Гость')).toBeInTheDocument();
   });
 
   it('после ошибки кнопка «Попробовать снова» повторяет загрузку', async () => {

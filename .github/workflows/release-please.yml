@@ -1,0 +1,31 @@
+name: release-please
+
+# Release Please maintains a release PR from Conventional Commits. The default
+# `GITHUB_TOKEN` cannot open pull requests in this repository
+# (`can_approve_pull_request_reviews` is false), so the action uses the same
+# maintainer PAT as the other write workflows. The action is pinned by SHA and
+# only runs on pushes to main, never on pull request content.
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Run Release Please
+        uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38 # v4.4.0
+        with:
+          token: ${{ secrets.AGENT_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

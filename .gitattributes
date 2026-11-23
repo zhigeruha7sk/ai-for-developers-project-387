@@ -5,5 +5,7 @@
 frontend/** text eol=lf
 
 *.sh text eol=lf
+*.tsp text eol=lf
+api/openapi/*.yaml text eol=lf
 mvnw text eol=lf
 *.cmd text eol=crlf

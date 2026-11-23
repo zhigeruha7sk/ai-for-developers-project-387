@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiListMeetingTypes } from '../api/generated';
 import type { MeetingType } from '../api/generated';
+import { useGuest } from '../context/GuestContext';
 
 export default function BookingTypePage() {
   const [meetingTypes, setMeetingTypes] = useState<MeetingType[]>([]);
   const [state, setState] = useState<'loading' | 'ready' | 'missing'>('loading');
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { guest } = useGuest();
 
   const load = useCallback(async () => {
     setState('loading');
@@ -27,10 +29,26 @@ export default function BookingTypePage() {
     void load();
   }, [load]);
 
-  if (state === 'loading') return <p>Загружаем…</p>;
+  const guestBadge = (
+    <span className="guest-badge">
+      <span className="avatar" aria-hidden="true">
+        {guest.avatar}
+      </span>
+      <span className="guest-role">Гость</span>
+    </span>
+  );
+
+  if (state === 'loading')
+    return (
+      <div className="types-page">
+        {guestBadge}
+        <p>Загружаем…</p>
+      </div>
+    );
   if (state === 'missing')
     return (
       <div className="types-page">
+        {guestBadge}
         <h1>Типы встреч недоступны</h1>
         <p>{error ?? 'Произошла ошибка при загрузке типов встреч.'}</p>
         <button onClick={() => void load()} className="button">
@@ -45,6 +63,7 @@ export default function BookingTypePage() {
   if (meetingTypes.length === 0)
     return (
       <div className="types-page">
+        {guestBadge}
         <h1>Типы встреч недоступны</h1>
         <p>Типы встреч не найдены в ответе сервера. Попробуйте нажать «Попробовать снова».</p>
         <button onClick={() => void load()} className="button">
@@ -58,6 +77,8 @@ export default function BookingTypePage() {
 
   return (
     <div className="types-page">
+      {guestBadge}
+
       <h1 className="page-heading">Выберите тип события</h1>
 
       <ul className="meeting-types">

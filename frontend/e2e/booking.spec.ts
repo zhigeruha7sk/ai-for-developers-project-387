@@ -98,6 +98,12 @@ test('гость проходит путь от выбора типа до по�
   const date = almatyDate(1);
 
   await page.goto('/booking');
+
+  // Соседний сценарий: на странице 2 уже есть бейдж гостя, но имени ещё нет.
+  const guestBadge = page.locator('.types-page .guest-badge');
+  await expect(guestBadge).toContainText('Гость');
+  await expect(guestBadge.locator('.avatar')).not.toBeEmpty();
+
   await page.locator('.meeting-type', { hasText: MEETING_30.name }).click();
   await expect(page).toHaveURL(/\/booking\/meeting-30$/);
 
