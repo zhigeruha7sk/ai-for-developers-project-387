@@ -327,8 +327,8 @@ cd ai-for-developers-project-387
 - Исправление: сервис `calendar` в Railway не был подключён к репозиторию, последний деплой
   заливался вручную из локальной папки 14.11.2026, поэтому прод не обновлялся. Источник
   подключён к `zhigeruha7sk/ai-for-developers-project-387`, ветка `main`, сборка идёт по
-  `Dockerfile`. После переразвёртывания `GET /api/version` отвечает 200 с
-  `commit: 83fad9d…` и `branch: main`; находка закрыта в issue #23.
+  `Dockerfile`. После переразвёртывания `GET /api/version` отвечает 200, его `commit` совпадает
+  с HEAD ветки `main`, `branch` равен `main`; находка закрыта в issue #23.
 
 #### Личные выводы
 
