@@ -65,7 +65,7 @@ expect() {
     FAKE_ISSUE_COMMENTS="$tmp/issues.json" \
     FAKE_PR_COMMENTS="$tmp/prs.json" \
     MAX_AUTO_REVIEWS_PER_PR="$max" \
-    "$guard" 42 "$exclude" 2>"$tmp/stderr")" || status=$?
+    bash "$guard" 42 "$exclude" 2>"$tmp/stderr")" || status=$?
 
   if [ "$status" -ne 0 ]; then
     printf 'FAIL %s: guard exited %s\n' "$name" "$status" >&2

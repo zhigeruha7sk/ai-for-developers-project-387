@@ -75,7 +75,7 @@ expect() {
     FAKE_SHA="abc123" \
     FAKE_RUNS="$tmp/runs.json" \
     GITHUB_OUTPUT="$outfile" \
-    "$gate" >/dev/null 2>"$tmp/stderr" || status=$?
+    bash "$gate" >/dev/null 2>"$tmp/stderr" || status=$?
 
   local got_allowed got_used got_reason
   got_allowed="$(sed -n 's/^allowed=//p' "$outfile")"
