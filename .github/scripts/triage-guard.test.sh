@@ -55,22 +55,34 @@ expect() {
   fi
 }
 
-expect "human without labels" "run" \
-  '{"labels":[],"author_type":"User","is_pr":false}'
+expect "trusted owner without labels" "run" \
+  '{"labels":[],"author_type":"User","author_association":"OWNER","is_pr":false}'
 
 # `needs-triage` is set by the workflow itself, so it must not block.
 expect "needs-triage does not block" "run" \
-  '{"labels":["needs-triage"],"author_type":"User","is_pr":false}'
+  '{"labels":["needs-triage"],"author_type":"User","author_association":"OWNER","is_pr":false}'
+
+expect "trusted member" "run" \
+  '{"labels":[],"author_type":"User","author_association":"MEMBER","is_pr":false}'
+
+expect "trusted collaborator" "run" \
+  '{"labels":[],"author_type":"User","author_association":"COLLABORATOR","is_pr":false}'
+
+expect "external author" "skip" \
+  '{"labels":[],"author_type":"User","author_association":"NONE","is_pr":false}'
+
+expect "contributor author" "skip" \
+  '{"labels":[],"author_type":"User","author_association":"CONTRIBUTOR","is_pr":false}'
 
 expect "pull request" "skip" \
-  '{"labels":[],"author_type":"User","is_pr":true}'
+  '{"labels":[],"author_type":"User","author_association":"OWNER","is_pr":true}'
 
 expect "bot author" "skip" \
-  '{"labels":[],"author_type":"Bot","is_pr":false}'
+  '{"labels":[],"author_type":"Bot","author_association":"NONE","is_pr":false}'
 
 for label in skip-triage needs-info ready-for-agent ready-for-human wontfix; do
   expect "label $label" "skip" \
-    "{\"labels\":[\"$label\"],\"author_type\":\"User\",\"is_pr\":false}"
+    "{\"labels\":[\"$label\"],\"author_type\":\"User\",\"author_association\":\"OWNER\",\"is_pr\":false}"
 done
 
 printf '\n%s case(s), %s failure(s)\n' "$cases" "$failures"

@@ -157,8 +157,10 @@ jobs:
        startsWith(github.event.comment.body, '/opencode'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Serialize automatic triage agent runs across issues: at most one runs at
+    # a time. The request workflow (issues: opened) keeps its per-issue group.
     concurrency:
-      group: opencode-triage-${{ github.event.issue.number || github.event.pull_request.number }}
+      group: opencode-triage
       cancel-in-progress: false
     # Triage only reads the repository and edits its issue (labels, comments).
     permissions:

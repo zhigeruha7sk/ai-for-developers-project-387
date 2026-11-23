@@ -19,16 +19,17 @@ Edit the "Label in our tracker" column to match whatever vocabulary you actually
 
 `.github/workflows/opencode-triage.yml` runs on `issues: opened` only (never on comments or PRs).
 
-**Who is triaged.** Human-authored issues only. Bots are ignored. An issue is skipped when it
+**Who is triaged.** Issues from trusted authors only (`OWNER`, `MEMBER`, `COLLABORATOR`).
+Bots and external authors are ignored. An issue is skipped when it
 already carries `skip-triage`, `needs-info`, `ready-for-agent`, `ready-for-human` or `wontfix`.
 Add `skip-triage` when a new issue must not be triaged automatically.
 
 The job-level `if` is only a fast filter over the `issues: opened` payload; it cannot see
 labels added after `opened`. Immediately before writing, a `Re-check live issue state` step runs
 `.github/scripts/triage-guard.sh`, which re-reads the issue through the API. If the live issue is
-a PR, its author is a bot, or it carries any of the labels above, the step exits 0 and neither
-`needs-triage` nor the comment is written. `needs-triage` is not a blocker because this workflow
-sets it itself. The `triage` agent repeats the same check as its first step.
+a PR, its author is a bot or an external author, or it carries any of the labels above, the step
+exits 0 and neither `needs-triage` nor the comment is written. `needs-triage` is not a blocker
+because this workflow sets it itself. The `triage` agent repeats the same check as its first step.
 
 **What happens.** The workflow adds `needs-triage` and posts a comment containing
 `/oc` plus the auto-triage marker. `opencode.yml` sees the marker and runs the dedicated
@@ -44,8 +45,10 @@ with the reason explained in the comment.
 
 **Permissions.** The triage job runs with `permissions: {}` and writes through
 `secrets.AGENT_PUSH_TOKEN` only. A comment authored by `github-actions[bot]` does not trigger
-`opencode.yml`, so the PAT is required. The job times out after 5 minutes and uses
-`concurrency` keyed by the issue number without cancelling an in-flight run.
+`opencode.yml`, so the PAT is required. The request job times out after 5 minutes and uses
+`concurrency` keyed by the issue number without cancelling an in-flight run. The automatic
+`triage` agent run in `opencode.yml` uses the shared `opencode-triage` group, so at most one
+automatic triage agent runs at a time.
 
 **Agent limits.** The `triage` agent is defined in `opencode.json` and is read-only:
 `edit`, `write`, sub-agents (`task`) and questions are denied, and the shell is limited to

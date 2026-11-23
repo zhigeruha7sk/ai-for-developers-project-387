@@ -18,6 +18,7 @@ jobs:
     if: |
       !github.event.issue.pull_request &&
       github.event.issue.user.type != 'Bot' &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association) &&
       !contains(github.event.issue.labels.*.name, 'skip-triage') &&
       !contains(github.event.issue.labels.*.name, 'needs-info') &&
       !contains(github.event.issue.labels.*.name, 'ready-for-agent') &&
