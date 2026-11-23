@@ -8,6 +8,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -40,6 +41,31 @@ class ApiContractTest {
     assertThat(response.headers().firstValue("Content-Type"))
         .hasValueSatisfying(value -> assertThat(value).startsWith("application/json"));
     assertThat(objectMapper.readTree(response.body()).get("status").asText()).isEqualTo("UP");
+  }
+
+  @Test
+  void versionMatchesContract() throws Exception {
+    HttpResponse<String> response = get("/api/version");
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(response.headers().firstValue("Content-Type"))
+        .hasValueSatisfying(value -> assertThat(value).startsWith("application/json"));
+    JsonNode body = objectMapper.readTree(response.body());
+    String commit = body.get("commit").asText();
+    String commitShort = body.get("commitShort").asText();
+    String branch = body.get("branch").asText();
+    String builtAt = body.get("builtAt").asText();
+    assertThat(commit).isNotBlank();
+    assertThat(commitShort).isNotBlank();
+    assertThat(branch).isNotBlank();
+    assertThat(builtAt).isNotBlank();
+    if (!"unknown".equals(commit)) {
+      assertThat(commit).matches("[0-9a-f]{7,40}");
+      assertThat(commitShort).isEqualTo(commit.substring(0, 7));
+    }
+    if (!"unknown".equals(builtAt)) {
+      assertThat(Instant.parse(builtAt)).isNotNull();
+    }
   }
 
   @Test

@@ -21,6 +21,7 @@
     <java.version>21</java.version>
     <spotless.version>3.10.4</spotless.version>
     <google-java-format.version>2.0.0</google-java-format.version>
+    <git-commit-id.version>10.0.1</git-commit-id.version>
   </properties>
 
   <dependencies>
@@ -41,6 +42,32 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+
+      <!-- Пишет git.properties в jar, чтобы /api/version отвечал собранным SHA. -->
+      <plugin>
+        <groupId>io.github.git-commit-id</groupId>
+        <artifactId>git-commit-id-maven-plugin</artifactId>
+        <version>${git-commit-id.version}</version>
+        <executions>
+          <execution>
+            <id>git-commit</id>
+            <goals>
+              <goal>revision</goal>
+            </goals>
+            <phase>initialize</phase>
+          </execution>
+        </executions>
+        <configuration>
+          <commitIdGenerationMode>full</commitIdGenerationMode>
+          <generateGitPropertiesFile>true</generateGitPropertiesFile>
+          <generateGitPropertiesFilename>
+            ${project.build.outputDirectory}/git.properties
+          </generateGitPropertiesFilename>
+          <!-- Docker-сборка копирует только backend/src, без .git: SHA приходит
+               из переменных Railway в рантайме. -->
+          <failOnNoGitDirectory>false</failOnNoGitDirectory>
+        </configuration>
       </plugin>
 
       <plugin>

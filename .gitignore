@@ -17,6 +17,8 @@ hk.local.pkl
 frontend/test-results/
 frontend/playwright-report/
 frontend/blob-report/
+# captured results are evidence of one run, never sources to commit
+frontend/test-results-backup/
 
 # agent skills (installed via skills CLI)
 # Skills themselves are tracked so the CI agent can use them; keep local state ignored.
