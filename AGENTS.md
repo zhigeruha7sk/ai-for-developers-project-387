@@ -30,7 +30,7 @@
 | `mise run check`                        | Все проверки: линтеры, типы, тесты                               |
 | `mise run lint`                         | Линтеры TypeSpec, Java (Spotless), фронтенда (ESLint + Prettier) |
 | `mise run typecheck`                    | Проверка типов фронтенда по сгенерированному SDK                 |
-| `mise run test`                         | Тесты бэкенда (JUnit), фронтенда (Vitest) и браузерный E2E       |
+| `mise run test`                         | Тесты бэкенда (JUnit), фронтенда (Vitest), E2E и guard автотриажа |
 | `mise run test:e2e`                     | Браузерный сценарий Playwright против настоящего сервера         |
 | `mise run api:gen`                      | Компилирует TypeSpec в OpenAPI                                   |
 | `mise run sdk:gen`                      | Генерирует TypeScript SDK из OpenAPI                             |
